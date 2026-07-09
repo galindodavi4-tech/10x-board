@@ -1387,14 +1387,6 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
     if (w > 0) { onSaveWeight(w); setEditWeight(false); }
   }
 
-  // status relativo à zona ótima
-  let statusLabel = "Sem registros", statusColor = C.muted;
-  if (hasWeight && dayEffective > 0) {
-    if (dayEffective < goalMin) { statusLabel = "Abaixo do ideal"; statusColor = AMBER; }
-    else if (dayEffective <= goalMax) { statusLabel = "Zona ótima"; statusColor = "#22C55E"; }
-    else { statusLabel = "Acima da zona"; statusColor = WATER_BLUE; }
-  }
-
   const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
 
   return (
@@ -1532,24 +1524,23 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
           ))}
         </div>
 
-        {/* Resumo do dia + zona ótima */}
+        {/* Resumo do dia — anel de progresso + zona ótima */}
         <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.line}` }}>
-          <div className="flex items-end justify-between mb-2">
-            <div>
+          {hasWeight ? (
+            <HydrationRing value={dayEffective} pure={dayPure} min={goalMin} max={goalMax} />
+          ) : (
+            <div className="flex items-end justify-between">
               <p className="text-3xl font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
                 {dayEffective} <span className="text-sm" style={{ color: C.muted }}>ml de água</span>
               </p>
-              {dayOther > 0 && (
-                <p className="text-[11px] mt-1" style={{ color: C.muted }}>
-                  <span style={{ color: WATER_BLUE }}>{dayPure} ml</span> de água pura + <span style={{ color: C.pink }}>{dayOther} ml</span> de outras bebidas
-                </p>
-              )}
+              <span className="text-[11px] text-right" style={{ color: C.muted }}>informe seu peso<br />pra ver a meta</span>
             </div>
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: `${statusColor}1F`, color: statusColor }}>
-              {statusLabel}
-            </span>
-          </div>
-          {hasWeight && <HydrationGauge value={dayEffective} min={goalMin} max={goalMax} />}
+          )}
+          {dayOther > 0 && (
+            <p className="text-[11px] mt-3 text-center" style={{ color: C.muted }}>
+              <span style={{ color: WATER_BLUE }}>{dayPure} ml</span> de água pura + <span style={{ color: C.pink }}>{dayOther} ml</span> de outras bebidas
+            </p>
+          )}
         </div>
 
         {/* Lista do dia */}
@@ -1662,29 +1653,74 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
   );
 }
 
-function HydrationGauge({ value, min, max }) {
+/* Anel de ticks estilo velocímetro — água pura (azul) + outras (rosa),  */
+/* com a zona ótima (35–50 ml/kg) destacada em verde no trilho.          */
+function HydrationRing({ value, pure, min, max }) {
   const C = useC();
-  const scaleMax = Math.max(max * 1.15, value * 1.05, 1);
-  const pctFill = Math.min(100, (value / scaleMax) * 100);
-  const zoneStart = (min / scaleMax) * 100;
-  const zoneWidth = ((max - min) / scaleMax) * 100;
-  const inZone = value >= min && value <= max;
-  const fillColor = value < min ? AMBER : inZone ? "#22C55E" : WATER_BLUE;
+  const SIZE = 260, cx = SIZE / 2, cy = SIZE / 2;
+  const rInner = 100, rOuter = 120;
+  const N = 60;
+  const startDeg = 30, sweepDeg = 300; // abertura de 60° no topo
+  const cap = max || 1;
+  const pTotal = Math.min(1, value / cap);
+  const pPure = Math.min(1, pure / cap);
+  const zMin = Math.min(1, min / cap); // início da zona ótima (ex: 0.7)
+
+  const ticks = [];
+  for (let i = 0; i < N; i++) {
+    const f = i / (N - 1);
+    const A = ((startDeg + f * sweepDeg) * Math.PI) / 180;
+    const sin = Math.sin(A), cos = Math.cos(A);
+    let color, glow = false;
+    if (value > 0 && f <= pPure) { color = WATER_BLUE; glow = true; }
+    else if (value > 0 && f <= pTotal) { color = C.pink; glow = true; }
+    else if (f >= zMin - 1e-6) { color = "rgba(34,197,94,0.45)"; } // trilho da zona ótima
+    else { color = C.line; }
+    ticks.push({
+      key: i, color, glow,
+      x1: cx + rInner * sin, y1: cy - rInner * cos,
+      x2: cx + rOuter * sin, y2: cy - rOuter * cos,
+    });
+  }
+
+  let statusLabel = "Comece a beber", statusColor = C.muted;
+  if (value > 0) {
+    if (value < min) { statusLabel = "Abaixo do ideal"; statusColor = AMBER; }
+    else if (value <= max) { statusLabel = "Zona ótima"; statusColor = "#22C55E"; }
+    else { statusLabel = "Acima da zona"; statusColor = WATER_BLUE; }
+  }
+  const pct = Math.round(pTotal * 100);
+
   return (
-    <div>
-      <div className="relative w-full h-3 rounded-full overflow-hidden" style={{ background: C.surface2 }}>
-        {/* faixa da zona ótima */}
-        <div
-          className="absolute top-0 bottom-0"
-          style={{ left: `${zoneStart}%`, width: `${zoneWidth}%`, background: "rgba(34,197,94,0.22)" }}
-        />
-        {/* preenchimento */}
-        <div className="absolute top-0 bottom-0 left-0 rounded-full" style={{ width: `${pctFill}%`, background: fillColor }} />
-      </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-[10px]" style={{ color: C.muted }}>0</span>
-        <span className="text-[10px] font-bold" style={{ color: "#22C55E" }}>{min}–{max} ml (ideal)</span>
-        <span className="text-[10px]" style={{ color: C.muted }}>{Math.round(scaleMax)}</span>
+    <div style={{ position: "relative", width: "100%", maxWidth: SIZE, margin: "0 auto", aspectRatio: "1 / 1" }}>
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ width: "100%", height: "100%", display: "block" }}>
+        {ticks.map((t) => (
+          <line
+            key={t.key}
+            x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+            stroke={t.color} strokeWidth={3.4} strokeLinecap="round"
+            style={t.glow ? { filter: `drop-shadow(0 0 2.5px ${t.color})` } : undefined}
+          />
+        ))}
+      </svg>
+      <div
+        style={{
+          position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 40px",
+        }}
+      >
+        <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, lineHeight: 1, color: C.text, fontSize: "3.1rem" }}>
+          {value}<span style={{ fontSize: "1.1rem", color: C.muted }}> ml</span>
+        </p>
+        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: C.muted, letterSpacing: "0.1em", marginTop: 2 }}>
+          de hidratação
+        </p>
+        <p style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
+          meta <b style={{ color: C.text }}>{min}–{max} ml</b> · {pct}%
+        </p>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 999, marginTop: 6, background: `${statusColor}1F`, color: statusColor }}>
+          {statusLabel}
+        </span>
       </div>
     </div>
   );
