@@ -3,11 +3,11 @@ import {
   Plus, X, ChevronLeft, ChevronRight, Trophy, Flame, Target,
   Clock, Check, Trash2, Pencil, Sun, Moon, MonitorSmartphone, Sparkles,
   CheckCircle2, Zap, Activity, Brain, Smile, Gauge, BarChart3, Calendar as CalendarIcon,
-  Repeat, TrendingUp, Award, AlertTriangle, Shield
+  Repeat, TrendingUp, Award, AlertTriangle, Shield, Droplets, Scale
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, BarChart, Bar, Cell
+  CartesianGrid, BarChart, Bar, Cell, ReferenceLine, ReferenceArea
 } from "recharts";
 
 /* ------------------------------------------------------------------ */
@@ -97,6 +97,30 @@ function recoveryColor(v) {
   if (v <= 7) return "#8FD14F";
   return "#22C55E";
 }
+
+/* ------------------------------------------------------------------ */
+/*  Hydration — water content per beverage (scientifically referenced) */
+/*  Fontes: USDA FoodData Central + Beverage Hydration Index           */
+/*  (Maughan et al., Am J Clin Nutr 2016). Valores = % de água.        */
+/* ------------------------------------------------------------------ */
+const BEVERAGES = [
+  { key: "agua",      label: "Água",         waterPct: 100, color: "#38BDF8" },
+  { key: "cafe",      label: "Café",         waterPct: 99,  color: "#8B5E3C" },
+  { key: "cha",       label: "Chá",          waterPct: 99,  color: "#7BB661" },
+  { key: "coco",      label: "Água de coco", waterPct: 95,  color: "#A3D948" },
+  { key: "isotonico", label: "Isotônico",    waterPct: 93,  color: "#22C55E" },
+  { key: "refri",     label: "Refrigerante", waterPct: 89,  color: "#9A9AA3" },
+  { key: "suco",      label: "Suco natural", waterPct: 88,  color: "#F5A524" },
+  { key: "leite",     label: "Leite",        waterPct: 87,  color: "#D9CBA3" },
+];
+const bevInfo = (k) => BEVERAGES.find((b) => b.key === k) || BEVERAGES[0];
+/* água efetiva de uma dose = volume × (% de água / 100) */
+const effectiveWater = (entry) => Math.round((entry.amount * bevInfo(entry.type).waterPct) / 100);
+/* zona ótima de ingestão: 35–50 ml de água por kg de peso corporal */
+const WATER_ML_PER_KG_MIN = 35;
+const WATER_ML_PER_KG_MAX = 50;
+const WATER_BLUE = "#38BDF8";
+const AMOUNT_PRESETS = [200, 300, 500];
 
 /* ------------------------------------------------------------------ */
 /*  Date helpers                                                       */
@@ -309,7 +333,7 @@ async function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
-  return { cards: [], goals: [], checkins: [], completions: [], jumps: [], theme: "auto" };
+  return { cards: [], goals: [], checkins: [], completions: [], jumps: [], hydration: [], weight: null, theme: "auto" };
 }
 async function saveData(data) {
   try {
@@ -413,6 +437,8 @@ export default function App() {
   const [checkins, setCheckins] = useState([]);
   const [completions, setCompletions] = useState([]);
   const [jumps, setJumps] = useState([]);
+  const [hydration, setHydration] = useState([]);
+  const [weight, setWeight] = useState(null);
   const [themePref, setThemePref] = useState("auto");
   const [tab, setTab] = useState("semana");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
@@ -434,6 +460,8 @@ export default function App() {
       setCheckins(data.checkins || []);
       setCompletions(data.completions || []);
       setJumps(data.jumps || []);
+      setHydration(data.hydration || []);
+      setWeight(data.weight ?? null);
       setThemePref(data.theme || "auto");
       setLoading(false);
     })();
@@ -449,9 +477,11 @@ export default function App() {
       checkins: partial.checkins !== undefined ? partial.checkins : checkins,
       completions: partial.completions !== undefined ? partial.completions : completions,
       jumps: partial.jumps !== undefined ? partial.jumps : jumps,
+      hydration: partial.hydration !== undefined ? partial.hydration : hydration,
+      weight: partial.weight !== undefined ? partial.weight : weight,
       theme: partial.theme !== undefined ? partial.theme : themePref,
     });
-  }, [cards, goals, checkins, completions, jumps, themePref]);
+  }, [cards, goals, checkins, completions, jumps, hydration, weight, themePref]);
 
   function updateCards(updater) {
     setCards((prev) => {
@@ -487,6 +517,17 @@ export default function App() {
       persist({ jumps: next });
       return next;
     });
+  }
+  function updateHydration(updater) {
+    setHydration((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      persist({ hydration: next });
+      return next;
+    });
+  }
+  function updateWeight(next) {
+    setWeight(next);
+    persist({ weight: next });
   }
   function updateTheme(next) {
     setThemePref(next);
@@ -643,6 +684,12 @@ export default function App() {
       return [...prev, entry];
     });
   }
+  function addHydration(entry) {
+    updateHydration((prev) => [...prev, { id: `h_${Date.now()}`, ...entry }]);
+  }
+  function deleteHydration(id) {
+    updateHydration((prev) => prev.filter((h) => h.id !== id));
+  }
 
   if (loading) {
     return (
@@ -775,6 +822,9 @@ export default function App() {
             cards={cards} completions={completions}
             checkins={checkins} onSaveCheckin={saveCheckin}
             jumps={jumps} onSaveJump={saveJump}
+            hydration={hydration} weight={weight}
+            onAddHydration={addHydration} onDeleteHydration={deleteHydration}
+            onSaveWeight={updateWeight}
             insights={insights}
           />
         )}
@@ -1172,7 +1222,7 @@ function MonthView({ monthCursor, setMonthCursor, cards, completions, selectedDa
 /* ------------------------------------------------------------------ */
 /*  Painel View — training analytics + CMJ + recovery + insights        */
 /* ------------------------------------------------------------------ */
-function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSaveJump, insights }) {
+function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSaveJump, hydration, weight, onAddHydration, onDeleteHydration, onSaveWeight, insights }) {
   const C = useC();
   const [period, setPeriod] = useState("semana");
 
@@ -1257,11 +1307,399 @@ function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSave
         </div>
       )}
 
+      {/* Hydration */}
+      <HydrationPanel
+        hydration={hydration} weight={weight}
+        onAdd={onAddHydration} onDelete={onDeleteHydration} onSaveWeight={onSaveWeight}
+      />
+
       {/* CMJ */}
       <CMJPanel jumps={jumps} onSave={onSaveJump} />
 
       {/* Recovery */}
       <RecoveryPanel checkins={checkins} onSave={onSaveCheckin} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Hydration panel — daily intake, optimal zone & sources             */
+/* ------------------------------------------------------------------ */
+function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
+  const C = useC();
+  const [date, setDate] = useState(toISO(new Date()));
+  const [type, setType] = useState("agua");
+  const [amount, setAmount] = useState("");
+  const [chartPeriod, setChartPeriod] = useState("semana");
+  const [weightInput, setWeightInput] = useState(weight != null ? String(weight) : "");
+  const [editWeight, setEditWeight] = useState(false);
+
+  const weightNum = Number(weight) || 0;
+  const goalMin = Math.round(weightNum * WATER_ML_PER_KG_MIN);
+  const goalMax = Math.round(weightNum * WATER_ML_PER_KG_MAX);
+  const hasWeight = weightNum > 0;
+
+  const dayEntries = useMemo(
+    () => hydration.filter((h) => h.date === date).sort((a, b) => (b.id || "").localeCompare(a.id || "")),
+    [hydration, date]
+  );
+  const dayEffective = useMemo(() => dayEntries.reduce((a, h) => a + effectiveWater(h), 0), [dayEntries]);
+  const dayPure = useMemo(
+    () => dayEntries.filter((h) => h.type === "agua").reduce((a, h) => a + effectiveWater(h), 0),
+    [dayEntries]
+  );
+  const dayOther = dayEffective - dayPure;
+
+  const days = chartPeriod === "semana" ? 7 : 30;
+  const series = useMemo(() => {
+    const today = new Date();
+    const arr = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const iso = toISO(addDays(today, -i));
+      const dayList = hydration.filter((h) => h.date === iso);
+      const agua = dayList.filter((h) => h.type === "agua").reduce((a, h) => a + effectiveWater(h), 0);
+      const outras = dayList.reduce((a, h) => a + effectiveWater(h), 0) - agua;
+      arr.push({ date: fmtDM(iso), agua, outras });
+    }
+    return arr;
+  }, [hydration, days]);
+
+  const periodStart = toISO(addDays(new Date(), -(days - 1)));
+  const sources = useMemo(() => {
+    const inPeriod = hydration.filter((h) => h.date >= periodStart);
+    return BEVERAGES.map((b) => {
+      const ml = inPeriod.filter((h) => h.type === b.key).reduce((a, h) => a + effectiveWater(h), 0);
+      return { key: b.key, label: b.label, color: b.color, ml };
+    }).filter((s) => s.ml > 0).sort((a, b) => b.ml - a.ml);
+  }, [hydration, periodStart]);
+  const sourcesTotal = sources.reduce((a, s) => a + s.ml, 0);
+
+  const amountNum = Number(amount);
+  const canAdd = amount !== "" && !isNaN(amountNum) && amountNum > 0;
+  function submit(ml) {
+    const v = ml != null ? ml : amountNum;
+    if (!v || v <= 0) return;
+    onAdd({ date, type, amount: v });
+    setAmount("");
+  }
+  function saveWeight() {
+    const w = Number(weightInput);
+    if (w > 0) { onSaveWeight(w); setEditWeight(false); }
+  }
+
+  // status relativo à zona ótima
+  let statusLabel = "Sem registros", statusColor = C.muted;
+  if (hasWeight && dayEffective > 0) {
+    if (dayEffective < goalMin) { statusLabel = "Abaixo do ideal"; statusColor = AMBER; }
+    else if (dayEffective <= goalMax) { statusLabel = "Zona ótima"; statusColor = "#22C55E"; }
+    else { statusLabel = "Acima da zona"; statusColor = WATER_BLUE; }
+  }
+
+  const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-1.5 mb-3">
+        <Droplets size={16} color={WATER_BLUE} />
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>
+          Hidratação
+        </span>
+      </div>
+
+      {/* Peso corporal → zona ótima */}
+      {(!hasWeight || editWeight) ? (
+        <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+          <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: C.text }}>
+            <Scale size={13} color={C.muted} /> Qual seu peso corporal? (kg)
+          </p>
+          <p className="text-[11px] mb-2.5" style={{ color: C.muted }}>
+            Usamos pra calcular sua meta: 35 a 50 ml de água por kg de peso.
+          </p>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number" step="0.5" min="0" placeholder="Ex: 72"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+              className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={inputStyle}
+            />
+            <button
+              onClick={saveWeight}
+              disabled={!(Number(weightInput) > 0)}
+              className="py-2.5 px-5 rounded-xl font-bold text-sm text-white"
+              style={{ background: Number(weightInput) > 0 ? WATER_BLUE : C.line }}
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl p-4 mb-4 flex items-center gap-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0" style={{ background: `${WATER_BLUE}22` }}>
+            <Scale size={22} color={WATER_BLUE} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-2xl font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
+              {goalMin}–{goalMax} <span className="text-sm" style={{ color: C.muted }}>ml/dia</span>
+            </p>
+            <p className="text-xs mt-1" style={{ color: C.muted }}>
+              Meta de água pra {weightNum} kg · 35–50 ml/kg (zona ótima)
+            </p>
+          </div>
+          <button
+            onClick={() => { setWeightInput(String(weightNum)); setEditWeight(true); }}
+            className="p-2 rounded-full shrink-0" style={{ background: C.surface2 }}
+            aria-label="Editar peso"
+          >
+            <Pencil size={14} color={C.muted} />
+          </button>
+        </div>
+      )}
+
+      {/* Registro de bebida */}
+      <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5">
+            <CalendarIcon size={13} color={C.muted} />
+            <span className="text-xs font-bold" style={{ color: C.muted }}>Registro do dia</span>
+          </div>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded-lg px-2 py-1 text-xs outline-none"
+            style={inputStyle}
+          />
+        </div>
+
+        <label className="block text-xs font-bold uppercase mb-1.5" style={{ color: C.muted, letterSpacing: "0.05em" }}>
+          Tipo de líquido
+        </label>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {BEVERAGES.map((b) => {
+            const active = type === b.key;
+            return (
+              <button
+                key={b.key}
+                onClick={() => setType(b.key)}
+                className="px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5"
+                style={{
+                  background: active ? b.color : C.surface2,
+                  color: active ? "#fff" : C.muted,
+                  border: `1.5px solid ${active ? b.color : C.line}`,
+                }}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ background: active ? "#fff" : b.color }} />
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] mb-3" style={{ color: C.muted }}>
+          {bevInfo(type).label} tem <b style={{ color: C.text }}>{bevInfo(type).waterPct}%</b> de água — cada 100 ml contam como {Math.round(bevInfo(type).waterPct)} ml de hidratação.
+        </p>
+
+        <label className="block text-xs font-bold uppercase mb-1.5" style={{ color: C.muted, letterSpacing: "0.05em" }}>
+          Quantidade (ml)
+        </label>
+        <div className="flex gap-2 items-center mb-2">
+          <input
+            type="number" step="10" min="0" placeholder="Ex: 250"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={inputStyle}
+          />
+          <button
+            onClick={() => submit()}
+            disabled={!canAdd}
+            className="py-2.5 px-5 rounded-xl font-bold text-sm text-white flex items-center gap-1"
+            style={{ background: canAdd ? WATER_BLUE : C.line }}
+          >
+            <Plus size={16} /> Add
+          </button>
+        </div>
+        <div className="flex gap-2">
+          {AMOUNT_PRESETS.map((p) => (
+            <button
+              key={p}
+              onClick={() => submit(p)}
+              className="flex-1 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: C.surface2, color: C.text, border: `1px solid ${C.line}` }}
+            >
+              +{p} ml
+            </button>
+          ))}
+        </div>
+
+        {/* Resumo do dia + zona ótima */}
+        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.line}` }}>
+          <div className="flex items-end justify-between mb-2">
+            <div>
+              <p className="text-3xl font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
+                {dayEffective} <span className="text-sm" style={{ color: C.muted }}>ml de água</span>
+              </p>
+              {dayOther > 0 && (
+                <p className="text-[11px] mt-1" style={{ color: C.muted }}>
+                  <span style={{ color: WATER_BLUE }}>{dayPure} ml</span> de água pura + <span style={{ color: C.pink }}>{dayOther} ml</span> de outras bebidas
+                </p>
+              )}
+            </div>
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: `${statusColor}1F`, color: statusColor }}>
+              {statusLabel}
+            </span>
+          </div>
+          {hasWeight && <HydrationGauge value={dayEffective} min={goalMin} max={goalMax} />}
+        </div>
+
+        {/* Lista do dia */}
+        {dayEntries.length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-4">
+            {dayEntries.map((h) => {
+              const b = bevInfo(h.type);
+              return (
+                <div key={h.id} className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={{ background: C.surface2 }}>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: b.color }} />
+                  <span className="text-sm font-semibold flex-1" style={{ color: C.text }}>{b.label}</span>
+                  <span className="text-xs" style={{ color: C.muted }}>{h.amount} ml → {effectiveWater(h)} ml</span>
+                  <button onClick={() => onDelete(h.id)} className="p-1 rounded-full" aria-label="Remover">
+                    <Trash2 size={13} color={C.muted} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Panorama diário */}
+      <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.04em" }}>
+            Panorama diário de hidratação
+          </span>
+          <div className="flex gap-1.5">
+            <Pill small active={chartPeriod === "semana"} onClick={() => setChartPeriod("semana")}>7 dias</Pill>
+            <Pill small active={chartPeriod === "mes"} onClick={() => setChartPeriod("mes")}>30 dias</Pill>
+          </div>
+        </div>
+        <div style={{ width: "100%", height: 180 }}>
+          <ResponsiveContainer>
+            <BarChart data={series} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid stroke={C.line} strokeDasharray="3 3" vertical={false} />
+              {hasWeight && (
+                <ReferenceArea y1={goalMin} y2={goalMax} fill="#22C55E" fillOpacity={0.10} />
+              )}
+              {hasWeight && (
+                <ReferenceLine y={goalMin} stroke="#22C55E" strokeDasharray="4 4" strokeOpacity={0.7} />
+              )}
+              {hasWeight && (
+                <ReferenceLine y={goalMax} stroke="#22C55E" strokeDasharray="4 4" strokeOpacity={0.7} />
+              )}
+              <XAxis dataKey="date" tick={{ fontSize: 9, fill: C.muted }} interval={chartPeriod === "mes" ? 4 : 0} axisLine={{ stroke: C.line }} tickLine={false} />
+              <YAxis tick={{ fontSize: 9, fill: C.muted }} axisLine={false} tickLine={false} width={30} />
+              <Tooltip
+                contentStyle={{ background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 8, fontSize: 11 }}
+                labelStyle={{ color: C.text }}
+                formatter={(v, name) => [`${v} ml`, name === "agua" ? "Água pura" : "Outras bebidas"]}
+              />
+              <Bar dataKey="agua" stackId="h" fill={WATER_BLUE} />
+              <Bar dataKey="outras" stackId="h" fill={C.pink} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex items-center gap-4 mt-3 flex-wrap">
+          <LegendDot color={WATER_BLUE} label="Água pura" />
+          <LegendDot color={C.pink} label="Água de outras bebidas" />
+          {hasWeight && <LegendDot color="#22C55E" label="Zona ótima (35–50 ml/kg)" dashed />}
+        </div>
+      </div>
+
+      {/* Fontes de hidratação */}
+      <div className="rounded-2xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.04em" }}>
+          Principais fontes de hidratação
+        </span>
+        {sources.length === 0 ? (
+          <p className="text-xs mt-3" style={{ color: C.muted }}>
+            Registre suas bebidas pra ver de onde vem sua hidratação.
+          </p>
+        ) : (
+          <>
+            <div style={{ width: "100%", height: Math.max(120, sources.length * 38) }} className="mt-3">
+              <ResponsiveContainer>
+                <BarChart data={sources} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid stroke={C.line} strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 9, fill: C.muted }} axisLine={{ stroke: C.line }} tickLine={false} />
+                  <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: C.text }} axisLine={false} tickLine={false} width={78} />
+                  <Tooltip
+                    cursor={{ fill: C.surface2 }}
+                    contentStyle={{ background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 8, fontSize: 11 }}
+                    labelStyle={{ color: C.text }}
+                    formatter={(v) => [`${v} ml de água`, "Contribuição"]}
+                  />
+                  <Bar dataKey="ml" radius={[0, 6, 6, 0]}>
+                    {sources.map((s) => <Cell key={s.key} fill={s.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-col gap-1.5 mt-2">
+              {sources.map((s) => (
+                <div key={s.key} className="flex items-center gap-2 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                  <span className="flex-1" style={{ color: C.text }}>{s.label}</span>
+                  <span style={{ color: C.muted }}>
+                    {s.ml} ml · {sourcesTotal ? Math.round((s.ml / sourcesTotal) * 100) : 0}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HydrationGauge({ value, min, max }) {
+  const C = useC();
+  const scaleMax = Math.max(max * 1.15, value * 1.05, 1);
+  const pctFill = Math.min(100, (value / scaleMax) * 100);
+  const zoneStart = (min / scaleMax) * 100;
+  const zoneWidth = ((max - min) / scaleMax) * 100;
+  const inZone = value >= min && value <= max;
+  const fillColor = value < min ? AMBER : inZone ? "#22C55E" : WATER_BLUE;
+  return (
+    <div>
+      <div className="relative w-full h-3 rounded-full overflow-hidden" style={{ background: C.surface2 }}>
+        {/* faixa da zona ótima */}
+        <div
+          className="absolute top-0 bottom-0"
+          style={{ left: `${zoneStart}%`, width: `${zoneWidth}%`, background: "rgba(34,197,94,0.22)" }}
+        />
+        {/* preenchimento */}
+        <div className="absolute top-0 bottom-0 left-0 rounded-full" style={{ width: `${pctFill}%`, background: fillColor }} />
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-[10px]" style={{ color: C.muted }}>0</span>
+        <span className="text-[10px] font-bold" style={{ color: "#22C55E" }}>{min}–{max} ml (ideal)</span>
+        <span className="text-[10px]" style={{ color: C.muted }}>{Math.round(scaleMax)}</span>
+      </div>
+    </div>
+  );
+}
+
+function LegendDot({ color, label, dashed }) {
+  const C = useC();
+  return (
+    <div className="flex items-center gap-1.5">
+      {dashed ? (
+        <span className="w-3.5 h-0 shrink-0" style={{ borderTop: `2px dashed ${color}` }} />
+      ) : (
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+      )}
+      <span className="text-[11px]" style={{ color: C.muted }}>{label}</span>
     </div>
   );
 }
