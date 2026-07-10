@@ -14,32 +14,24 @@ import {
 /* ------------------------------------------------------------------ */
 /*  Theme tokens                                                        */
 /* ------------------------------------------------------------------ */
-const DARK = {
-  bg: "#0A0A0F",
-  surface: "#15151C",
-  surface2: "#1D1D26",
-  line: "#2A2A34",
+/* Tema único (inspirado no design base, Geração de Atletas):            */
+/* fundo cinza escuro, caixas de conteúdo MAIS escuras que o fundo,       */
+/* e elementos "elevados" (células de dia, inputs, chips) um pouco claros.*/
+const THEME = {
+  bg: "#1A1A1D",        // fundo da página — cinza escuro
+  surface: "#101012",   // cards de conteúdo — mais escuros que o fundo
+  surface2: "#28282E",  // elevados: célula de dia, input, chip, botão 2º
+  line: "#33333A",      // bordas
   pink: "#FF1B7A",
   pinkDark: "#C4125A",
   pinkSoft: "rgba(255,27,122,0.14)",
   text: "#F5F5F7",
   muted: "#8C8C97",
   blue: "#4F8FF7",
-  blueSoft: "rgba(79,143,247,0.13)",
+  blueSoft: "rgba(79,143,247,0.14)",
 };
-const LIGHT = {
-  bg: "#F4F5F7",
-  surface: "#FFFFFF",
-  surface2: "#EDEFF3",
-  line: "#DEE1E8",
-  pink: "#FF1B7A",
-  pinkDark: "#C4125A",
-  pinkSoft: "rgba(255,27,122,0.10)",
-  text: "#0E0E13",
-  muted: "#63646F",
-  blue: "#2F6BE0",
-  blueSoft: "rgba(47,107,224,0.09)",
-};
+const DARK = THEME;
+const LIGHT = THEME;
 const AMBER = "#F5A524";
 
 const ColorContext = createContext(DARK);
@@ -384,11 +376,11 @@ function TypeBadge({ type }) {
   const t = typeInfo(type);
   return (
     <span
-      className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase inline-block"
+      className="px-3 py-1 rounded-full text-[11px] font-bold uppercase inline-block"
       style={{
-        background: t.fill ? "#FF1B7A" : "#000",
+        background: t.fill ? "#FF1B7A" : "rgba(255,255,255,0.06)",
         color: "#fff",
-        letterSpacing: "0.04em",
+        letterSpacing: "0.06em",
         fontFamily: "'Barlow Condensed', sans-serif",
       }}
     >
@@ -482,11 +474,9 @@ export default function App() {
     })();
   }, []);
 
-  const isDark = themePref === "auto" ? isNightNow() : themePref === "dark";
-  const C = isDark ? DARK : LIGHT;
+  const C = THEME;
 
-  // Mantém o fundo do body/html e a cor da barra de status em sincronia com o tema
-  // (o body vinha fixo em escuro, o que fazia o modo claro parecer "cinza").
+  // Sincroniza o fundo do body/html e a cor da barra de status com o tema.
   useEffect(() => {
     document.body.style.background = C.bg;
     document.documentElement.style.background = C.bg;
@@ -797,7 +787,6 @@ export default function App() {
             </h1>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            <ThemeSwitch value={themePref} onChange={updateTheme} />
             <StreakBadge current={streaks.current} />
           </div>
         </div>
@@ -994,7 +983,7 @@ function SectionHeader({ eyebrow, title }) {
 function InfoNote({ children, title }) {
   const C = useC();
   return (
-    <div className="rounded-2xl p-4 mb-5" style={{ background: C.blueSoft, borderLeft: `3px solid ${C.blue}` }}>
+    <div className="rounded-3xl p-4 mb-5" style={{ background: C.blueSoft, borderLeft: `3px solid ${C.blue}` }}>
       {title && (
         <p className="text-[11px] font-bold uppercase mb-1" style={{ color: C.blue, letterSpacing: "0.08em" }}>
           {title}
@@ -1106,16 +1095,16 @@ function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelected
             <button
               key={iso}
               onClick={() => setSelectedDate(iso)}
-              className="rounded-2xl py-2.5 flex flex-col items-center gap-1"
+              className="rounded-2xl py-3 flex flex-col items-center gap-1.5"
               style={{
-                background: isSel ? C.pink : C.surface,
-                border: `1.5px solid ${isSel ? C.pink : isToday ? C.pinkDark : C.line}`,
+                background: isSel ? C.pink : C.surface2,
+                border: `1.5px solid ${isSel ? C.pink : isToday ? C.pinkDark : "transparent"}`,
               }}
             >
               <span className="text-[10px] font-bold" style={{ color: isSel ? "#fff" : C.muted }}>
                 {WEEKDAY_LABELS[i]}
               </span>
-              <span className="text-base font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: isSel ? "#fff" : C.text }}>
+              <span className="text-lg font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: isSel ? "#fff" : C.text }}>
                 {d.getDate()}
               </span>
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: has ? (isSel ? "#fff" : C.pink) : "transparent" }} />
@@ -1158,7 +1147,7 @@ function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelected
 
       <div className="flex flex-col gap-3">
         {cardsForDate(selectedDate).length === 0 && (
-          <div className="rounded-2xl p-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
+          <div className="rounded-3xl p-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
             <p className="text-sm" style={{ color: C.muted }}>Nenhum treino marcado. Toca em "Novo treino" pra organizar o dia.</p>
           </div>
         )}
@@ -1176,7 +1165,7 @@ function StreakCard({ streaks }) {
   const hasHistory = current > 0 || best > 0;
   return (
     <div
-      className="rounded-2xl p-4 mb-4 flex items-center gap-4"
+      className="rounded-3xl p-4 mb-4 flex items-center gap-4"
       style={{ background: current > 0 ? C.pinkSoft : C.surface, border: `1px solid ${current > 0 ? C.pinkDark : C.line}` }}
     >
       <div
@@ -1216,21 +1205,19 @@ function TrainingCard({ card, onClick, onQuickToggle }) {
   const res = card.type === "jogo" ? resultInfo(card.feedback?.resultado) : null;
   return (
     <div
-      className="rounded-2xl p-4 w-full flex gap-3"
+      className="rounded-3xl p-4 w-full flex gap-3.5"
       style={{
         background: C.surface,
-        border: `1px solid ${C.line}`,
-        borderLeftWidth: "4px",
-        borderLeftColor: done ? C.pink : C.muted,
+        border: `1.5px solid ${done ? C.pink : C.line}`,
       }}
     >
       <button
         onClick={(e) => { e.stopPropagation(); onQuickToggle(); }}
-        className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5 transition-transform active:scale-90"
+        className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center mt-0.5 transition-transform active:scale-90"
         style={{ background: done ? C.pink : "transparent", border: `2px solid ${done ? C.pink : C.line}` }}
         aria-label="Marcar como concluído"
       >
-        {done && <Check size={16} color="#fff" strokeWidth={3} />}
+        {done && <Check size={17} color="#fff" strokeWidth={3} />}
       </button>
 
       <button onClick={onClick} className="text-left flex-1 min-w-0">
@@ -1248,7 +1235,7 @@ function TrainingCard({ card, onClick, onQuickToggle }) {
             )}
           </div>
           {done ? (
-            <span className="flex items-center gap-1 text-[11px] font-bold shrink-0" style={{ color: C.pink }}>
+            <span className="flex items-center gap-1 text-[11px] font-black uppercase shrink-0" style={{ color: C.pink }}>
               Concluído
             </span>
           ) : (
@@ -1257,7 +1244,7 @@ function TrainingCard({ card, onClick, onQuickToggle }) {
             </span>
           )}
         </div>
-        <p className="font-bold text-base leading-tight" style={{ color: C.text }}>{card.title || "Treino"}</p>
+        <p className="font-bold text-lg leading-tight" style={{ color: C.text }}>{card.title || "Treino"}</p>
         {card.endDate && card.endDate !== card.date && (
           <p className="text-[11px] mt-1" style={{ color: C.muted }}>até {fmtDM(card.endDate)}</p>
         )}
@@ -1269,6 +1256,9 @@ function TrainingCard({ card, onClick, onQuickToggle }) {
         {done && !card.feedback?.bem && !card.feedback?.vitoria && !res && (
           <p className="text-xs mt-2" style={{ color: C.muted }}>Toca pra registrar como foi esse treino →</p>
         )}
+        <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase mt-2.5" style={{ color: C.pink, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.04em" }}>
+          Ver treino <ChevronRight size={13} />
+        </span>
       </button>
     </div>
   );
@@ -1397,7 +1387,7 @@ function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSave
         <Pill small active={period === "ano"} onClick={() => setPeriod("ano")}>Ano</Pill>
       </div>
 
-      <div className="rounded-2xl p-5 mb-4 flex items-center gap-5" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-5 mb-4 flex items-center gap-5" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <RingStat percent={overallPct} />
         <div>
           <p className="text-3xl font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
@@ -1411,7 +1401,7 @@ function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSave
       </div>
 
       {byType.length > 0 && (
-        <div className="rounded-2xl p-4 mb-6" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+        <div className="rounded-3xl p-4 mb-6" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
           <p className="text-xs font-bold uppercase mb-3" style={{ color: C.muted, letterSpacing: "0.04em" }}>
             Por área
           </p>
@@ -1457,7 +1447,7 @@ function NutricaoView({ hydration, weight, onAddHydration, onDeleteHydration, on
         onAdd={onAddHydration} onDelete={onDeleteHydration} onSaveWeight={onSaveWeight}
       />
 
-      <div className="rounded-2xl p-5 mb-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
+      <div className="rounded-3xl p-5 mb-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
         <Apple size={22} color={C.muted} className="mx-auto mb-2" />
         <p className="text-sm font-bold" style={{ color: C.text }}>Acompanhamento de alimentação chega em breve</p>
         <p className="text-xs mt-1" style={{ color: C.muted }}>Refeições, macros e energia pro treino — em desenvolvimento.</p>
@@ -1544,7 +1534,7 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
 
       {/* Peso corporal → zona ótima */}
       {(!hasWeight || editWeight) ? (
-        <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+        <div className="rounded-3xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
           <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: C.text }}>
             <Scale size={13} color={C.muted} /> Qual seu peso corporal? (kg)
           </p>
@@ -1570,7 +1560,7 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl p-4 mb-4 flex items-center gap-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+        <div className="rounded-3xl p-4 mb-4 flex items-center gap-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
           <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0" style={{ background: `${WATER_BLUE}22` }}>
             <Scale size={22} color={WATER_BLUE} />
           </div>
@@ -1593,7 +1583,7 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
       )}
 
       {/* Registro de bebida */}
-      <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5">
             <CalendarIcon size={13} color={C.muted} />
@@ -1708,7 +1698,7 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
       </div>
 
       {/* Panorama diário */}
-      <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.04em" }}>
             Panorama diário de hidratação
@@ -1751,7 +1741,7 @@ function HydrationPanel({ hydration, weight, onAdd, onDelete, onSaveWeight }) {
       </div>
 
       {/* Fontes de hidratação */}
-      <div className="rounded-2xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.04em" }}>
           Principais fontes de hidratação
         </span>
@@ -1953,7 +1943,7 @@ function CMJPanel({ jumps, onSave }) {
         </span>
       </div>
 
-      <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5">
             <CalendarIcon size={13} color={C.muted} />
@@ -1998,7 +1988,7 @@ function CMJPanel({ jumps, onSave }) {
         </div>
       </div>
 
-      <div className="rounded-2xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.04em" }}>
             Evolução do salto
@@ -2087,7 +2077,7 @@ function RecoveryPanel({ checkins, onSave }) {
         </span>
       </div>
 
-      <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5">
             <CalendarIcon size={13} color={C.muted} />
@@ -2169,7 +2159,7 @@ function RecoveryPanel({ checkins, onSave }) {
       </div>
 
       {/* Charts */}
-      <div className="rounded-2xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="rounded-3xl p-4" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.04em" }}>
             Evolução da recuperação
@@ -2269,7 +2259,7 @@ function GoalCard({ goal, onClick, onQuickAdd, conquered }) {
 
   return (
     <div
-      className="rounded-2xl p-4"
+      className="rounded-3xl p-4"
       style={{
         background: conquered ? C.pinkSoft : C.surface,
         border: `1px solid ${conquered ? C.pinkDark : C.line}`,
@@ -2344,7 +2334,7 @@ function CardDetailModal({ card, onClose, onEdit, onDelete, onStartFeedback }) {
       <h3 className="text-2xl font-black mb-4" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>{card.title}</h3>
 
       {res && (
-        <div className="rounded-2xl p-4 mb-4 flex items-center gap-4" style={{ background: `${res.color}18`, border: `1px solid ${res.color}` }}>
+        <div className="rounded-3xl p-4 mb-4 flex items-center gap-4" style={{ background: `${res.color}18`, border: `1px solid ${res.color}` }}>
           <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-black text-lg text-white" style={{ background: res.color }}>
             {res.letter}
           </div>
