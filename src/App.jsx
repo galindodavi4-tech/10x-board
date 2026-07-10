@@ -3,7 +3,8 @@ import {
   Plus, X, ChevronLeft, ChevronRight, Trophy, Flame, Target,
   Clock, Check, Trash2, Pencil, Sun, Moon, MonitorSmartphone, Sparkles,
   CheckCircle2, Zap, Activity, Brain, Smile, Gauge, BarChart3, Calendar as CalendarIcon,
-  Repeat, TrendingUp, Award, AlertTriangle, Shield, Droplets, Scale
+  Repeat, TrendingUp, Award, AlertTriangle, Shield, Droplets, Scale,
+  CalendarDays, Apple, Quote
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -23,17 +24,21 @@ const DARK = {
   pinkSoft: "rgba(255,27,122,0.14)",
   text: "#F5F5F7",
   muted: "#8C8C97",
+  blue: "#4F8FF7",
+  blueSoft: "rgba(79,143,247,0.13)",
 };
 const LIGHT = {
-  bg: "#F6F6F8",
+  bg: "#F4F5F7",
   surface: "#FFFFFF",
-  surface2: "#F0F0F4",
-  line: "#E2E2E9",
+  surface2: "#EDEFF3",
+  line: "#DEE1E8",
   pink: "#FF1B7A",
   pinkDark: "#C4125A",
-  pinkSoft: "rgba(255,27,122,0.09)",
+  pinkSoft: "rgba(255,27,122,0.10)",
   text: "#0E0E13",
-  muted: "#75757F",
+  muted: "#63646F",
+  blue: "#2F6BE0",
+  blueSoft: "rgba(47,107,224,0.09)",
 };
 const AMBER = "#F5A524";
 
@@ -67,6 +72,16 @@ const MONTH_LABELS = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
+/* Frases de motivação exibidas na página principal. Fáceis de ampliar. */
+const QUOTES = [
+  { text: "No que diz respeito ao empenho, ao compromisso, ao esforço, à dedicação, não existe meio termo. Ou você faz uma coisa bem feita ou não faz.", author: "Ayrton Senna" },
+];
+function quoteOfTheDay() {
+  const d = fromISO(toISO(new Date()));
+  const idx = Math.floor(d.getTime() / 86400000) % QUOTES.length;
+  return QUOTES[idx];
+}
+
 const CANSACO_LEVELS = [
   { v: 1, label: "Leve" },
   { v: 2, label: "Ok" },
@@ -470,6 +485,15 @@ export default function App() {
   const isDark = themePref === "auto" ? isNightNow() : themePref === "dark";
   const C = isDark ? DARK : LIGHT;
 
+  // Mantém o fundo do body/html e a cor da barra de status em sincronia com o tema
+  // (o body vinha fixo em escuro, o que fazia o modo claro parecer "cinza").
+  useEffect(() => {
+    document.body.style.background = C.bg;
+    document.documentElement.style.background = C.bg;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", C.bg);
+  }, [C.bg]);
+
   const persist = useCallback((partial) => {
     saveData({
       cards: partial.cards !== undefined ? partial.cards : cards,
@@ -778,14 +802,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="px-5 flex gap-2 mb-5 overflow-x-auto whitespace-nowrap">
-          <Pill active={tab === "semana"} onClick={() => setTab("semana")}>Semana</Pill>
-          <Pill active={tab === "mes"} onClick={() => setTab("mes")}>Mês</Pill>
-          <Pill active={tab === "painel"} onClick={() => setTab("painel")}>Painel</Pill>
-          <Pill active={tab === "metas"} onClick={() => setTab("metas")}>Metas</Pill>
-        </div>
-
         {tab === "semana" && (
           <WeekView
             weekStart={weekStart}
@@ -822,10 +838,15 @@ export default function App() {
             cards={cards} completions={completions}
             checkins={checkins} onSaveCheckin={saveCheckin}
             jumps={jumps} onSaveJump={saveJump}
+            insights={insights}
+          />
+        )}
+
+        {tab === "nutricao" && (
+          <NutricaoView
             hydration={hydration} weight={weight}
             onAddHydration={addHydration} onDeleteHydration={deleteHydration}
             onSaveWeight={updateWeight}
-            insights={insights}
           />
         )}
 
@@ -848,12 +869,14 @@ export default function App() {
         {(tab === "semana" || tab === "metas") && (
           <button
             onClick={() => (tab === "semana" ? openNewCard(selectedDate) : setShowAddGoal(true))}
-            className="fixed bottom-6 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg z-40"
-            style={{ background: C.pink, boxShadow: `0 8px 24px ${C.pinkSoft}` }}
+            className="fixed right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg z-40"
+            style={{ bottom: "88px", background: C.pink, boxShadow: `0 8px 24px ${C.pinkSoft}` }}
           >
             <Plus size={26} color="#fff" strokeWidth={2.5} />
           </button>
         )}
+
+        <BottomNav tab={tab} setTab={setTab} />
 
         {activeCard && !showAddCard && !showFeedback && (
           <CardDetailModal
@@ -951,6 +974,106 @@ function StreakBadge({ current }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Shared building blocks (design base: GDA)                           */
+/* ------------------------------------------------------------------ */
+function SectionHeader({ eyebrow, title }) {
+  const C = useC();
+  return (
+    <div className="pt-1 pb-4">
+      <p className="text-[11px] font-bold uppercase mb-0.5" style={{ color: C.pink, letterSpacing: "0.14em" }}>
+        {eyebrow}
+      </p>
+      <h2 className="text-4xl font-black leading-none uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+/* Caixa de destaque em azul — usada com parcimônia (dicas / observações) */
+function InfoNote({ children, title }) {
+  const C = useC();
+  return (
+    <div className="rounded-2xl p-4 mb-5" style={{ background: C.blueSoft, borderLeft: `3px solid ${C.blue}` }}>
+      {title && (
+        <p className="text-[11px] font-bold uppercase mb-1" style={{ color: C.blue, letterSpacing: "0.08em" }}>
+          {title}
+        </p>
+      )}
+      <p className="text-sm leading-snug" style={{ color: C.blue }}>{children}</p>
+    </div>
+  );
+}
+
+/* Citação de mentalidade — borda rosa à esquerda, itálico maiúsculo */
+function QuoteBlock() {
+  const C = useC();
+  const q = quoteOfTheDay();
+  return (
+    <div className="mb-5" style={{ borderLeft: `3px solid ${C.pink}`, paddingLeft: 14 }}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Quote size={12} color={C.pink} />
+        <span className="text-[10px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.14em" }}>
+          Mentalidade
+        </span>
+      </div>
+      <p className="text-sm leading-snug" style={{ color: C.text, fontStyle: "italic", textTransform: "uppercase" }}>
+        “{q.text}”
+      </p>
+      <p className="text-xs font-black uppercase mt-2" style={{ color: C.pink, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.05em" }}>
+        {q.author}
+      </p>
+    </div>
+  );
+}
+
+/* Barra de navegação inferior (posicionamento em CSS inline p/ robustez) */
+function BottomNav({ tab, setTab }) {
+  const C = useC();
+  const items = [
+    { key: "semana", label: "Semana", icon: CalendarIcon },
+    { key: "mes", label: "Mês", icon: CalendarDays },
+    { key: "painel", label: "Painel", icon: BarChart3 },
+    { key: "nutricao", label: "Nutrição", icon: Apple },
+    { key: "metas", label: "Metas", icon: Target },
+  ];
+  return (
+    <div
+      style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, display: "flex",
+        background: C.surface, borderTop: `1px solid ${C.line}`,
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
+      {items.map(({ key, label, icon: Icon }) => {
+        const active = tab === key;
+        return (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+              gap: 3, padding: "9px 0 10px", background: "transparent",
+            }}
+          >
+            <Icon size={20} color={active ? C.pink : C.muted} strokeWidth={active ? 2.5 : 2} />
+            <span
+              className="uppercase"
+              style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.03em",
+                color: active ? C.pink : C.muted, fontFamily: "'Barlow Condensed', sans-serif",
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Week View                                                           */
 /* ------------------------------------------------------------------ */
 function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelectedDate, cardsForDate, recentVictories, streaks, onOpenCard, onAddCard, onQuickToggle }) {
@@ -958,6 +1081,7 @@ function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelected
   const today = toISO(new Date());
   return (
     <div className="px-5">
+      <QuoteBlock />
       <StreakCard streaks={streaks} />
 
       <div className="flex items-center justify-between mb-3">
@@ -1222,7 +1346,7 @@ function MonthView({ monthCursor, setMonthCursor, cards, completions, selectedDa
 /* ------------------------------------------------------------------ */
 /*  Painel View — training analytics + CMJ + recovery + insights        */
 /* ------------------------------------------------------------------ */
-function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSaveJump, hydration, weight, onAddHydration, onDeleteHydration, onSaveWeight, insights }) {
+function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSaveJump, insights }) {
   const C = useC();
   const [period, setPeriod] = useState("semana");
 
@@ -1307,17 +1431,37 @@ function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSave
         </div>
       )}
 
-      {/* Hydration */}
-      <HydrationPanel
-        hydration={hydration} weight={weight}
-        onAdd={onAddHydration} onDelete={onDeleteHydration} onSaveWeight={onSaveWeight}
-      />
-
       {/* CMJ */}
       <CMJPanel jumps={jumps} onSave={onSaveJump} />
 
       {/* Recovery */}
       <RecoveryPanel checkins={checkins} onSave={onSaveCheckin} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Nutrição View — hidratação hoje; alimentação chega depois          */
+/* ------------------------------------------------------------------ */
+function NutricaoView({ hydration, weight, onAddHydration, onDeleteHydration, onSaveWeight }) {
+  const C = useC();
+  return (
+    <div className="px-5">
+      <SectionHeader eyebrow="Nutrição do atleta" title="NUTRIÇÃO" />
+      <InfoNote title="Dica">
+        Distribua a água ao longo do dia — não adianta beber tudo de uma vez. Comece assim que acordar e mantenha um ritmo constante até o fim do treino.
+      </InfoNote>
+
+      <HydrationPanel
+        hydration={hydration} weight={weight}
+        onAdd={onAddHydration} onDelete={onDeleteHydration} onSaveWeight={onSaveWeight}
+      />
+
+      <div className="rounded-2xl p-5 mb-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
+        <Apple size={22} color={C.muted} className="mx-auto mb-2" />
+        <p className="text-sm font-bold" style={{ color: C.text }}>Acompanhamento de alimentação chega em breve</p>
+        <p className="text-xs mt-1" style={{ color: C.muted }}>Refeições, macros e energia pro treino — em desenvolvimento.</p>
+      </div>
     </div>
   );
 }
