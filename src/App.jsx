@@ -4,7 +4,7 @@ import {
   Clock, Check, Trash2, Pencil, Sun, Moon, MonitorSmartphone, Sparkles,
   CheckCircle2, Zap, Activity, Brain, Smile, Gauge, BarChart3, Calendar as CalendarIcon,
   Repeat, TrendingUp, Award, AlertTriangle, Shield, Droplets, Scale,
-  CalendarDays, Apple, Quote
+  CalendarDays, Apple, Quote, ListChecks
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -415,7 +415,7 @@ async function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
-  return { cards: [], goals: [], checkins: [], completions: [], jumps: [], hydration: [], weight: null, nutrition: null, theme: "auto" };
+  return { cards: [], goals: [], checkins: [], completions: [], jumps: [], hydration: [], weight: null, nutrition: null, tasks: [], theme: "auto" };
 }
 async function saveData(data) {
   try {
@@ -522,6 +522,7 @@ export default function App() {
   const [hydration, setHydration] = useState([]);
   const [weight, setWeight] = useState(null);
   const [nutrition, setNutrition] = useState(null); // perfil do gerador de plano alimentar
+  const [tasks, setTasks] = useState([]);
   const [themePref, setThemePref] = useState("auto");
   const [tab, setTab] = useState("semana");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
@@ -546,6 +547,7 @@ export default function App() {
       setHydration(data.hydration || []);
       setWeight(data.weight ?? null);
       setNutrition(data.nutrition ?? null);
+      setTasks(data.tasks || []);
       setThemePref(data.theme || "auto");
       setLoading(false);
     })();
@@ -571,10 +573,18 @@ export default function App() {
       hydration: partial.hydration !== undefined ? partial.hydration : hydration,
       weight: partial.weight !== undefined ? partial.weight : weight,
       nutrition: partial.nutrition !== undefined ? partial.nutrition : nutrition,
+      tasks: partial.tasks !== undefined ? partial.tasks : tasks,
       theme: partial.theme !== undefined ? partial.theme : themePref,
     });
-  }, [cards, goals, checkins, completions, jumps, hydration, weight, nutrition, themePref]);
+  }, [cards, goals, checkins, completions, jumps, hydration, weight, nutrition, tasks, themePref]);
 
+  function updateTasks(updater) {
+    setTasks((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      persist({ tasks: next });
+      return next;
+    });
+  }
   function updateCards(updater) {
     setCards((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -939,6 +949,10 @@ export default function App() {
           />
         )}
 
+        {tab === "tarefas" && (
+          <TarefasView tasks={tasks} onUpdate={updateTasks} />
+        )}
+
         {(tab === "semana" || tab === "metas") && (
           <button
             onClick={() => (tab === "semana" ? openNewCard(selectedDate) : setShowAddGoal(true))}
@@ -1109,6 +1123,7 @@ function BottomNav({ tab, setTab }) {
     { key: "painel", label: "Painel", icon: BarChart3 },
     { key: "nutricao", label: "Nutrição", icon: Apple },
     { key: "metas", label: "Metas", icon: Target },
+    { key: "tarefas", label: "Tarefas", icon: ListChecks },
   ];
   return (
     <div
@@ -1142,6 +1157,106 @@ function BottomNav({ tab, setTab }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tarefas View — lista simples estilo Notion                          */
+/* ------------------------------------------------------------------ */
+function TarefasView({ tasks, onUpdate }) {
+  const C = useC();
+  const [text, setText] = useState("");
+  const [showDone, setShowDone] = useState(false);
+  const active = tasks.filter((t) => !t.done);
+  const done = tasks.filter((t) => t.done);
+  const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
+
+  function add() {
+    const v = text.trim();
+    if (!v) return;
+    onUpdate((prev) => [{ id: `t_${Date.now()}`, text: v, done: false }, ...prev]);
+    setText("");
+  }
+  const toggle = (id) => onUpdate((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const remove = (id) => onUpdate((prev) => prev.filter((t) => t.id !== id));
+
+  return (
+    <div className="px-5">
+      <SectionHeader eyebrow="Organização" title="TAREFAS" />
+
+      <div className="flex gap-2 mb-5">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+          placeholder="Adicionar tarefa…"
+          className="flex-1 rounded-2xl px-4 py-3 text-sm outline-none"
+          style={inputStyle}
+        />
+        <button
+          onClick={add}
+          disabled={!text.trim()}
+          className="w-12 rounded-2xl flex items-center justify-center shrink-0"
+          style={{ background: text.trim() ? C.pink : C.line }}
+          aria-label="Adicionar tarefa"
+        >
+          <Plus size={20} color="#fff" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {active.length === 0 && done.length === 0 && (
+        <div className="rounded-3xl p-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
+          <p className="text-sm" style={{ color: C.muted }}>Nenhuma tarefa ainda. Escreve a primeira aí em cima.</p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {active.map((t) => (
+          <TaskRow key={t.id} task={t} onToggle={() => toggle(t.id)} onDelete={() => remove(t.id)} />
+        ))}
+      </div>
+
+      {done.length > 0 && (
+        <div className="mt-6">
+          <button onClick={() => setShowDone((s) => !s)} className="w-full flex items-center justify-between mb-2">
+            <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>
+              Concluídas · {done.length}
+            </span>
+            <ChevronRight size={16} color={C.muted} style={{ transform: showDone ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
+          </button>
+          {showDone && (
+            <div className="flex flex-col gap-2">
+              {done.map((t) => (
+                <TaskRow key={t.id} task={t} onToggle={() => toggle(t.id)} onDelete={() => remove(t.id)} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskRow({ task, onToggle, onDelete }) {
+  const C = useC();
+  const done = task.done;
+  return (
+    <div className="rounded-2xl p-3 flex items-center gap-3" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <button
+        onClick={onToggle}
+        className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-transform active:scale-90"
+        style={{ background: done ? C.pink : "transparent", border: `2px solid ${done ? C.pink : C.line}` }}
+        aria-label={done ? "Reabrir tarefa" : "Concluir tarefa"}
+      >
+        {done && <Check size={15} color="#fff" strokeWidth={3} />}
+      </button>
+      <span className="flex-1 text-sm min-w-0 break-words" style={{ color: done ? C.muted : C.text, textDecoration: done ? "line-through" : "none" }}>
+        {task.text}
+      </span>
+      <button onClick={onDelete} className="shrink-0 p-1.5 rounded-lg" aria-label="Excluir tarefa">
+        <Trash2 size={15} color={C.muted} />
+      </button>
     </div>
   );
 }
