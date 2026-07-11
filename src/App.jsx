@@ -4,7 +4,7 @@ import {
   Clock, Check, Trash2, Pencil, Sun, Moon, MonitorSmartphone, Sparkles,
   CheckCircle2, Zap, Activity, Brain, Smile, Gauge, BarChart3, Calendar as CalendarIcon,
   Repeat, TrendingUp, Award, AlertTriangle, Shield, Droplets, Scale,
-  CalendarDays, Apple, Quote, ListChecks
+  CalendarDays, Apple, Quote, ListChecks, Home, Droplet
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -72,6 +72,41 @@ function quoteOfTheDay() {
   const d = fromISO(toISO(new Date()));
   const idx = Math.floor(d.getTime() / 86400000) % QUOTES.length;
   return QUOTES[idx];
+}
+
+/* Frases curtas (futebol / disciplina / performance) da aba Hoje.       */
+/* Escolhida de forma determinística pela data — muda à meia-noite.       */
+const PHRASES = [
+  "Disciplina vence talento quando o talento não treina.",
+  "Cada treino é um degrau. Sobe.",
+  "O jogo se ganha no treino.",
+  "Constância vira craque.",
+  "Não conte os dias — faça os dias contarem.",
+  "Quem quer chegar longe cuida dos detalhes.",
+  "Sua única concorrência é quem você foi ontem.",
+  "Treina como se estivesse atrás, joga como líder.",
+  "Talento abre a porta, atitude te mantém dentro.",
+  "1% melhor por dia vira 10x no fim do ano.",
+  "Cansaço é temporário. Desistência é pra sempre.",
+  "O suor de hoje é o troféu de amanhã.",
+  "Foco no processo — o resultado vem.",
+  "Não existe atalho pra lugar que vale a pena.",
+  "Corre mais um. Sempre mais um.",
+  "Grandes jogadores fazem o simples muito bem.",
+  "A bola não mente: o trabalho aparece.",
+  "Recuperar também é treinar.",
+  "Mentalidade de titular, fome de reserva.",
+  "Vença a preguiça antes de vencer o adversário.",
+  "Hidrate, durma, treine, repita.",
+  "Pequenos hábitos, grandes resultados.",
+  "Você é o que repete todo dia.",
+  "O campo respeita quem treina de verdade.",
+  "Feito é melhor que perfeito. Começa.",
+];
+function phraseOfDay() {
+  const d = fromISO(toISO(new Date()));
+  const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+  return PHRASES[dayOfYear % PHRASES.length];
 }
 
 const CANSACO_LEVELS = [
@@ -524,7 +559,7 @@ export default function App() {
   const [nutrition, setNutrition] = useState(null); // perfil do gerador de plano alimentar
   const [tasks, setTasks] = useState([]);
   const [themePref, setThemePref] = useState("auto");
-  const [tab, setTab] = useState("semana");
+  const [tab, setTab] = useState("hoje");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [selectedDate, setSelectedDate] = useState(toISO(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
@@ -883,6 +918,16 @@ export default function App() {
           </div>
         </div>
 
+        {tab === "hoje" && (
+          <HojeView
+            cards={cards} completions={completions}
+            hydration={hydration} weight={weight} onAddHydration={addHydration}
+            onOpenCard={(occ) => setActiveCard(occ)}
+            onAddToday={() => openNewCard(toISO(new Date()))}
+            goToDay={(iso) => { setSelectedDate(iso); setWeekStart(startOfWeek(fromISO(iso))); setTab("semana"); }}
+          />
+        )}
+
         {tab === "semana" && (
           <WeekView
             weekStart={weekStart}
@@ -1118,6 +1163,7 @@ function QuoteBlock() {
 function BottomNav({ tab, setTab }) {
   const C = useC();
   const items = [
+    { key: "hoje", label: "Hoje", icon: Home },
     { key: "semana", label: "Semana", icon: CalendarIcon },
     { key: "mes", label: "Mês", icon: CalendarDays },
     { key: "painel", label: "Painel", icon: BarChart3 },
@@ -1141,14 +1187,14 @@ function BottomNav({ tab, setTab }) {
             onClick={() => setTab(key)}
             style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 3, padding: "9px 0 10px", background: "transparent",
+              gap: 3, padding: "9px 0 10px", background: "transparent", minWidth: 0,
             }}
           >
-            <Icon size={20} color={active ? C.pink : C.muted} strokeWidth={active ? 2.5 : 2} />
+            <Icon size={19} color={active ? C.pink : C.muted} strokeWidth={active ? 2.5 : 2} />
             <span
               className="uppercase"
               style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: "0.03em",
+                fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
                 color: active ? C.pink : C.muted, fontFamily: "'Barlow Condensed', sans-serif",
               }}
             >
@@ -1257,6 +1303,186 @@ function TaskRow({ task, onToggle, onDelete }) {
       <button onClick={onDelete} className="shrink-0 p-1.5 rounded-lg" aria-label="Excluir tarefa">
         <Trash2 size={15} color={C.muted} />
       </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Hoje View — dashboard do dia (frase, treino, água, semana, próximos) */
+/* ------------------------------------------------------------------ */
+function HojeView({ cards, completions, hydration, weight, onAddHydration, onOpenCard, onAddToday, goToDay }) {
+  const C = useC();
+  const now = new Date();
+  const today = toISO(now);
+  const phrase = phraseOfDay();
+
+  const todays = getOccurrencesForDate(cards, completions, today);
+  // Treino principal: o primeiro pendente; se todos concluídos, o primeiro.
+  const mainTraining = todays.find((o) => o.status !== "concluido") || todays[0] || null;
+
+  // Próximos 2 eventos futuros (a partir de amanhã, varrendo até 3 semanas).
+  const upcoming = [];
+  for (let i = 1; i <= 21 && upcoming.length < 2; i++) {
+    const iso = toISO(addDays(now, i));
+    for (const o of getOccurrencesForDate(cards, completions, iso)) {
+      if (upcoming.length < 2) upcoming.push(o);
+    }
+  }
+
+  // Tira semanal (semana atual).
+  const wkStart = startOfWeek(now);
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const iso = toISO(addDays(wkStart, i));
+    const occ = getOccurrencesForDate(cards, completions, iso);
+    const anyDone = occ.some((o) => o.status === "concluido");
+    return { iso, i, has: occ.length > 0, anyDone, isToday: iso === today };
+  });
+
+  // Hidratação de hoje (reusa o mesmo store de hidratação da aba Nutrição).
+  const goal = weight > 0 ? Math.round(weight * 35) : 2500;
+  const drank = hydration.filter((h) => h.date === today).reduce((a, h) => a + effectiveWater(h), 0);
+  const pct = Math.min(100, Math.round((drank / goal) * 100));
+  const hour = now.getHours();
+  // Aviso sutil quando está atrás do esperado pra hora do dia.
+  const behind = (hour >= 12 && pct < 30) || (hour >= 18 && pct < 70);
+  const weekdayFull = now.toLocaleDateString("pt-BR", { weekday: "long" });
+
+  return (
+    <div className="px-5">
+      {/* a) Frase do dia */}
+      <div className="rounded-3xl p-4 mb-4" style={{ background: C.surface, border: `1px solid ${C.line}`, borderLeft: `3px solid ${C.pink}` }}>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Sparkles size={12} color={C.pink} />
+          <span className="text-[10px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.14em" }}>Frase do dia</span>
+        </div>
+        <p className="text-base font-bold leading-snug" style={{ color: C.text }}>{phrase}</p>
+      </div>
+
+      {/* b) Treino de hoje */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-[11px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.1em" }}>Treino de hoje</span>
+      </div>
+      {mainTraining ? (
+        <TodayTrainingCard occ={mainTraining} count={todays.length} weekday={weekdayFull} onOpen={() => onOpenCard(mainTraining)} onSeeAll={() => goToDay(today)} />
+      ) : (
+        <div className="rounded-3xl p-6 mb-5 text-center" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+          <Moon size={26} color={C.muted} className="mx-auto mb-2" />
+          <p className="text-xl font-black uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>Dia de descanso</p>
+          <p className="text-sm mt-1 mb-3" style={{ color: C.muted }}>Nenhum treino marcado pra hoje. Descanso também constrói.</p>
+          <button onClick={onAddToday} className="inline-flex items-center gap-1 text-sm font-bold" style={{ color: C.pink }}>
+            <Plus size={15} /> Adicionar treino de hoje
+          </button>
+        </div>
+      )}
+
+      {/* c) Hidratação */}
+      <HydrationReminder
+        goal={goal} drank={drank} pct={pct} behind={behind} noWeight={!(weight > 0)}
+        onAdd={(ml) => onAddHydration({ date: today, type: "agua", amount: ml })}
+      />
+
+      {/* d) Tira semanal */}
+      <div className="flex items-center gap-1.5 mb-2 mt-6">
+        <span className="text-[11px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.1em" }}>Sua semana</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5 mb-6">
+        {week.map((d) => (
+          <button key={d.iso} onClick={() => goToDay(d.iso)} className="flex flex-col items-center gap-1.5">
+            <span className="text-[10px] font-bold" style={{ color: d.isToday ? C.pink : C.muted }}>{WEEKDAY_LABELS[d.i]}</span>
+            <span
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ background: d.anyDone ? C.pink : "transparent", border: `2px solid ${d.anyDone ? C.pink : d.isToday ? C.pink : d.has ? C.muted : C.line}` }}
+            >
+              {d.anyDone ? (
+                <Check size={15} color="#fff" strokeWidth={3} />
+              ) : (
+                <span className="text-xs font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: d.isToday ? C.pink : C.text }}>{fromISO(d.iso).getDate()}</span>
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* e) Próximos dias */}
+      {upcoming.length > 0 && (
+        <>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-[11px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.1em" }}>Próximos dias</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {upcoming.map((o) => (
+              <button key={o.occId} onClick={() => goToDay(o.date)} className="rounded-2xl p-3.5 flex items-center gap-3 text-left" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+                <div className="shrink-0 w-11 text-center">
+                  <p className="text-[10px] font-bold uppercase" style={{ color: C.muted }}>{WEEKDAY_LABELS[dowOf(o.date)]}</p>
+                  <p className="text-lg font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>{fromISO(o.date).getDate()}</p>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="mb-1"><TypeBadge type={o.type} /></div>
+                  <p className="font-bold text-sm truncate" style={{ color: C.text }}>{o.title || "Treino"}</p>
+                </div>
+                <ChevronRight size={16} color={C.muted} className="shrink-0" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TodayTrainingCard({ occ, count, weekday, onOpen, onSeeAll }) {
+  const C = useC();
+  const done = occ.status === "concluido";
+  return (
+    <div className="rounded-3xl p-5 mb-5" style={{ background: C.surface, border: `1.5px solid ${done ? C.pink : C.line}` }}>
+      <p className="text-[11px] font-bold uppercase mb-1" style={{ color: C.pink, letterSpacing: "0.1em" }}>{weekday}</p>
+      <h2 className="text-3xl font-black uppercase leading-none mb-2.5" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>{occ.title || "Treino"}</h2>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <TypeBadge type={occ.type} />
+        <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase" style={{ background: done ? C.pink : "transparent", color: done ? "#fff" : C.muted, border: `1px solid ${done ? C.pink : C.line}`, fontFamily: "'Barlow Condensed', sans-serif" }}>
+          {done ? "Concluído" : "Pendente"}
+        </span>
+        {occ.time && <span className="text-[11px] font-bold flex items-center gap-1" style={{ color: C.muted }}><Clock size={12} /> {occ.time}</span>}
+      </div>
+      <button onClick={onOpen} className="w-full py-3 rounded-2xl font-black uppercase flex items-center justify-center gap-1.5 text-white" style={{ background: C.pink, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.04em" }}>
+        Ver treino <ChevronRight size={18} strokeWidth={2.5} />
+      </button>
+      {count > 1 && (
+        <button onClick={onSeeAll} className="w-full text-center text-[11px] font-bold mt-2.5" style={{ color: C.muted }}>
+          +{count - 1} treino{count - 1 > 1 ? "s" : ""} hoje · ver todos
+        </button>
+      )}
+    </div>
+  );
+}
+
+function HydrationReminder({ goal, drank, pct, behind, noWeight, onAdd }) {
+  const C = useC();
+  return (
+    <div className="rounded-3xl p-5" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5">
+          <Droplet size={15} color={WATER_BLUE} />
+          <span className="text-[11px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.08em" }}>Hidratação de hoje</span>
+        </div>
+        <span className="text-sm font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
+          {drank}<span style={{ color: C.muted }}> / {goal} ml</span>
+        </span>
+      </div>
+      <div className="w-full h-2.5 rounded-full overflow-hidden mb-3" style={{ background: C.surface2 }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: WATER_BLUE, transition: "width .3s" }} />
+      </div>
+      {behind && (
+        <div className="flex items-start gap-2 rounded-2xl p-3 mb-3" style={{ background: "rgba(79,143,247,0.10)", border: `1px solid ${WATER_BLUE}` }}>
+          <Droplet size={15} color={WATER_BLUE} className="shrink-0 mt-0.5" />
+          <p className="text-xs leading-snug" style={{ color: C.text }}>Beba água! Você está atrasado na meta de hoje.</p>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button onClick={() => onAdd(250)} className="flex-1 py-2.5 rounded-xl text-sm font-bold" style={{ background: C.surface2, color: C.text, border: `1px solid ${C.line}` }}>+250 ml</button>
+        <button onClick={() => onAdd(500)} className="flex-1 py-2.5 rounded-xl text-sm font-bold" style={{ background: C.surface2, color: C.text, border: `1px solid ${C.line}` }}>+500 ml</button>
+      </div>
+      {noWeight && <p className="text-[10px] mt-2" style={{ color: C.muted }}>Meta padrão de 2500 ml. Defina seu peso na aba Nutrição pra personalizar (~35 ml/kg).</p>}
     </div>
   );
 }
