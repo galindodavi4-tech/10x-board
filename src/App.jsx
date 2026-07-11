@@ -48,6 +48,12 @@ const TYPES = [
   { key: "campo", label: "CAMPO", fill: false },
   { key: "tecnico", label: "TÉCNICO", fill: false },
   { key: "jogo", label: "JOGO", fill: false },
+  // Novos tipos de evento da aba Organização (cada um com sua cor de badge).
+  { key: "sono", label: "SONO", fill: false, color: "#6366F1" },
+  { key: "escola", label: "ESCOLA", fill: false, color: "#F5A524" },
+  { key: "cfga", label: "CFGA", fill: false, color: "#22C55E" },
+  { key: "tatica", label: "TÁTICA", fill: false, color: "#4F8FF7" },
+  { key: "livre", label: "LIVRE", fill: false, color: "#8C8C97" },
 ];
 const typeInfo = (k) => TYPES.find((t) => t.key === k) || TYPES[0];
 
@@ -319,6 +325,7 @@ function getOccurrencesForDate(cards, completions, iso) {
           date: iso,
           cardDate: c.date,
           time: c.time,
+          endTime: c.endTime || "",
           title: c.title,
           type: c.type,
           endDate: c.endDate || "",
@@ -336,6 +343,7 @@ function getOccurrencesForDate(cards, completions, iso) {
           date: iso,
           cardDate: c.date,
           time: c.time,
+          endTime: c.endTime || "",
           title: c.title,
           type: c.type,
           endDate: c.endDate || "",
@@ -484,11 +492,12 @@ function Pill({ active, children, onClick, small }) {
 
 function TypeBadge({ type }) {
   const t = typeInfo(type);
+  const bg = t.color ? t.color : (t.fill ? "#FF1B7A" : "rgba(255,255,255,0.06)");
   return (
     <span
       className="px-3 py-1 rounded-full text-[11px] font-bold uppercase inline-block"
       style={{
-        background: t.fill ? "#FF1B7A" : "rgba(255,255,255,0.06)",
+        background: bg,
         color: "#fff",
         letterSpacing: "0.06em",
         fontFamily: "'Barlow Condensed', sans-serif",
@@ -559,7 +568,7 @@ export default function App() {
   const [nutrition, setNutrition] = useState(null); // perfil do gerador de plano alimentar
   const [tasks, setTasks] = useState([]);
   const [themePref, setThemePref] = useState("auto");
-  const [tab, setTab] = useState("hoje");
+  const [tab, setTab] = useState("tarefas");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [selectedDate, setSelectedDate] = useState(toISO(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
@@ -709,7 +718,7 @@ export default function App() {
 
   function openNewCard(dateISO) {
     setActiveCard({
-      __new: true, date: dateISO, time: "16:00", title: "", type: "forca", endDate: "",
+      __new: true, date: dateISO, time: "16:00", endTime: "", title: "", type: "forca", endDate: "",
       recurrence: { type: "none", days: [], until: "" },
     });
     setShowAddCard(true);
@@ -719,6 +728,7 @@ export default function App() {
       id: occ.cardId,
       date: occ.cardDate,
       time: occ.time,
+      endTime: occ.endTime || "",
       title: occ.title,
       type: occ.type,
       endDate: occ.endDate,
@@ -732,14 +742,14 @@ export default function App() {
       : null;
     if (draft.__new) {
       const newCard = {
-        id: `c_${Date.now()}`, title: draft.title, type: draft.type, time: draft.time,
+        id: `c_${Date.now()}`, title: draft.title, type: draft.type, time: draft.time, endTime: draft.endTime || "",
         date: draft.date, endDate: recurrence ? "" : (draft.endDate || ""),
         recurrence, status: "pendente", feedback: null,
       };
       updateCards((prev) => [...prev, newCard]);
     } else {
       updateCards((prev) => prev.map((c) => (c.id === draft.id
-        ? { ...c, title: draft.title, type: draft.type, time: draft.time, date: draft.date, endDate: recurrence ? "" : (draft.endDate || ""), recurrence }
+        ? { ...c, title: draft.title, type: draft.type, time: draft.time, endTime: draft.endTime || "", date: draft.date, endDate: recurrence ? "" : (draft.endDate || ""), recurrence }
         : c)));
     }
     setShowAddCard(false);
@@ -924,37 +934,23 @@ export default function App() {
             hydration={hydration} weight={weight} onAddHydration={addHydration}
             onOpenCard={(occ) => setActiveCard(occ)}
             onAddToday={() => openNewCard(toISO(new Date()))}
-            goToDay={(iso) => { setSelectedDate(iso); setWeekStart(startOfWeek(fromISO(iso))); setTab("semana"); }}
+            goToDay={(iso) => { setSelectedDate(iso); setWeekStart(startOfWeek(fromISO(iso))); setTab("organizacao"); }}
           />
         )}
 
-        {tab === "semana" && (
-          <WeekView
-            weekStart={weekStart}
-            setWeekStart={setWeekStart}
-            weekDays={weekDays}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            cardsForDate={cardsForDate}
-            recentVictories={recentVictories}
-            streaks={streaks}
-            onOpenCard={(occ) => setActiveCard(occ)}
-            onAddCard={() => openNewCard(selectedDate)}
-            onQuickToggle={quickToggleOccurrence}
-          />
-        )}
-
-        {tab === "mes" && (
-          <MonthView
-            monthCursor={monthCursor}
-            setMonthCursor={setMonthCursor}
-            cards={cards}
-            completions={completions}
-            selectedDate={selectedDate}
-            setSelectedDate={(iso) => {
-              setSelectedDate(iso);
-              setTab("semana");
-              setWeekStart(startOfWeek(fromISO(iso)));
+        {tab === "organizacao" && (
+          <OrganizacaoView
+            cards={cards} completions={completions}
+            week={{
+              weekStart, setWeekStart, weekDays, selectedDate, setSelectedDate,
+              cardsForDate, recentVictories, streaks,
+              onOpenCard: (occ) => setActiveCard(occ),
+              onAddCard: () => openNewCard(selectedDate),
+              onQuickToggle: quickToggleOccurrence,
+            }}
+            month={{
+              monthCursor, setMonthCursor,
+              onPickDay: (iso) => { setSelectedDate(iso); setWeekStart(startOfWeek(fromISO(iso))); },
             }}
           />
         )}
@@ -998,9 +994,9 @@ export default function App() {
           <TarefasView tasks={tasks} onUpdate={updateTasks} />
         )}
 
-        {(tab === "semana" || tab === "metas") && (
+        {(tab === "organizacao" || tab === "metas") && (
           <button
-            onClick={() => (tab === "semana" ? openNewCard(selectedDate) : setShowAddGoal(true))}
+            onClick={() => (tab === "organizacao" ? openNewCard(selectedDate) : setShowAddGoal(true))}
             className="fixed right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg z-40"
             style={{ bottom: "88px", background: C.pink, boxShadow: `0 8px 24px ${C.pinkSoft}` }}
           >
@@ -1163,13 +1159,12 @@ function QuoteBlock() {
 function BottomNav({ tab, setTab }) {
   const C = useC();
   const items = [
+    { key: "tarefas", label: "Tarefas", icon: ListChecks },
     { key: "hoje", label: "Hoje", icon: Home },
-    { key: "semana", label: "Semana", icon: CalendarIcon },
-    { key: "mes", label: "Mês", icon: CalendarDays },
+    { key: "organizacao", label: "Organização", icon: CalendarDays },
     { key: "painel", label: "Painel", icon: BarChart3 },
     { key: "nutricao", label: "Nutrição", icon: Apple },
     { key: "metas", label: "Metas", icon: Target },
-    { key: "tarefas", label: "Tarefas", icon: ListChecks },
   ];
   return (
     <div
@@ -1303,6 +1298,150 @@ function TaskRow({ task, onToggle, onDelete }) {
       <button onClick={onDelete} className="shrink-0 p-1.5 rounded-lg" aria-label="Excluir tarefa">
         <Trash2 size={15} color={C.muted} />
       </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Organização View — guia + 4 pilares + calendário (semana / mês)     */
+/* ------------------------------------------------------------------ */
+function OrganizacaoView({ cards, completions, week, month }) {
+  const C = useC();
+  const [sub, setSub] = useState("semana");
+  return (
+    <>
+      <div className="px-5">
+        <SectionHeader eyebrow="Planeje sua rotina" title="ORGANIZAÇÃO" />
+        <GuideCard />
+        <PillarsCard cards={cards} completions={completions} />
+        <div className="flex gap-2 mb-4">
+          <Pill small active={sub === "semana"} onClick={() => setSub("semana")}>Semana</Pill>
+          <Pill small active={sub === "mes"} onClick={() => setSub("mes")}>Mês</Pill>
+        </div>
+      </div>
+      {sub === "semana" ? (
+        <WeekView {...week} hideIntro />
+      ) : (
+        <MonthView
+          monthCursor={month.monthCursor}
+          setMonthCursor={month.setMonthCursor}
+          cards={cards}
+          completions={completions}
+          selectedDate={week.selectedDate}
+          setSelectedDate={(iso) => { month.onPickDay(iso); setSub("semana"); }}
+        />
+      )}
+    </>
+  );
+}
+
+function GuideCard() {
+  const C = useC();
+  const steps = [
+    "Crie primeiro os eventos fixos (aula, sono, compromissos que não mudam)",
+    "Depois insira suas prioridades (treino, tática)",
+    "Por fim, analise o tempo livre e veja o que mais pode ser encaixado",
+  ];
+  return (
+    <div className="rounded-3xl p-4 mb-5" style={{ background: C.blueSoft, borderLeft: `3px solid ${C.blue}` }}>
+      <p className="text-[11px] font-bold uppercase mb-2.5" style={{ color: C.blue, letterSpacing: "0.08em" }}>Como organizar</p>
+      <div className="flex flex-col gap-2.5">
+        {steps.map((s, i) => (
+          <div key={i} className="flex gap-2.5 items-start">
+            <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: C.blue, color: "#fff", fontFamily: "'Barlow Condensed', sans-serif" }}>{i + 1}</span>
+            <p className="text-xs leading-snug" style={{ color: C.text }}>{s}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LevelChip({ level }) {
+  const map = {
+    empty: { c: "#8C8C97", t: "Sem evento" },
+    low: { c: "#F5A524", t: "Abaixo" },
+    ok: { c: "#4F8FF7", t: "Na meta" },
+    rec: { c: "#22C55E", t: "Recomendado" },
+  };
+  const m = map[level] || map.empty;
+  return (
+    <span style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", padding: "2px 8px", borderRadius: 999, color: m.c, border: `1px solid ${m.c}`, fontFamily: "'Barlow Condensed', sans-serif", whiteSpace: "nowrap" }}>
+      {m.t}
+    </span>
+  );
+}
+
+/* 4 pilares da rotina — verifica a semana atual usando as ocorrências.  */
+/* Precisa do término (endTime) dos eventos pra somar horas.             */
+function PillarsCard({ cards, completions }) {
+  const C = useC();
+  const [ws, we] = getPeriodRange("semana");
+  const occs = useMemo(() => occurrencesInRange(cards, completions, ws, we), [cards, completions, ws, we]);
+
+  const durH = (o) => {
+    if (!o.time || !o.endTime) return 0;
+    let d = hmToMin(o.endTime) - hmToMin(o.time);
+    if (d < 0) d += 1440; // vira a noite (ex.: sono 23:00 → 07:00)
+    return d / 60;
+  };
+  const TRAIN_TYPES = ["forca", "cardio", "campo", "tecnico", "jogo"];
+
+  // Sono — por noite: mín 7h, ideal 8h30-9h.
+  const sono = occs.filter((o) => o.type === "sono");
+  const sonoHrs = sono.map(durH).filter((h) => h > 0);
+  const sonoAvg = sonoHrs.length ? sonoHrs.reduce((a, b) => a + b, 0) / sonoHrs.length : 0;
+  const sonoLevel = sono.length === 0 ? "empty" : sonoHrs.length === 0 ? "ok" : sonoAvg >= 8.5 ? "rec" : sonoAvg >= 7 ? "ok" : "low";
+  const sonoStat = sono.length === 0 ? "sem registro" : `${sono.length} noite(s)${sonoHrs.length ? ` · ~${sonoAvg.toFixed(1)}h/noite` : " · sem horário"}`;
+
+  // Treino — por sessão: mín 1h30, ideal 2h30-4h.
+  const treino = occs.filter((o) => TRAIN_TYPES.includes(o.type));
+  const treinoHrs = treino.map(durH).filter((h) => h > 0);
+  const treinoAvg = treinoHrs.length ? treinoHrs.reduce((a, b) => a + b, 0) / treinoHrs.length : 0;
+  const treinoLevel = treino.length === 0 ? "empty" : treinoHrs.length === 0 ? "ok" : treinoAvg >= 2.5 && treinoAvg <= 4 ? "rec" : treinoAvg >= 1.5 ? "ok" : "low";
+  const treinoStat = treino.length === 0 ? "sem registro" : `${treino.length} sessão(ões)${treinoHrs.length ? ` · ~${treinoAvg.toFixed(1)}h cada` : ""}`;
+
+  // Aula CFGA — por semana: mín 1, ideal 3-4.
+  const cfga = occs.filter((o) => o.type === "cfga");
+  const cfgaLevel = cfga.length === 0 ? "empty" : cfga.length >= 3 ? "rec" : "ok";
+  const cfgaStat = `${cfga.length} aula(s) na semana`;
+
+  // Estudo tático — por semana: mín 1h, ideal 3-4h.
+  const tatica = occs.filter((o) => o.type === "tatica");
+  const taticaH = tatica.map(durH).reduce((a, b) => a + b, 0);
+  const taticaLevel = tatica.length === 0 ? "empty" : taticaH >= 3 ? "rec" : taticaH >= 1 || taticaH === 0 ? "ok" : "low";
+  const taticaStat = tatica.length === 0 ? "sem registro" : `${tatica.length} sessão(ões)${taticaH > 0 ? ` · ~${taticaH.toFixed(1)}h total` : ""}`;
+
+  const pillars = [
+    { key: "sono", label: "Sono", icon: Moon, level: sonoLevel, stat: sonoStat, goal: "mín 7h · ideal 8h30-9h por noite" },
+    { key: "treino", label: "Treino", icon: Activity, level: treinoLevel, stat: treinoStat, goal: "mín 1h30 · ideal 2h30-4h por dia de treino" },
+    { key: "cfga", label: "Aula CFGA", icon: Award, level: cfgaLevel, stat: cfgaStat, goal: "mín 1 · ideal 3-4 aulas por semana" },
+    { key: "tatica", label: "Estudo tático", icon: Brain, level: taticaLevel, stat: taticaStat, goal: "mín 1h · ideal 3-4h/sem (3-4× 1h ou 6-8× 30min)" },
+  ];
+
+  return (
+    <div className="rounded-3xl p-4 mb-5" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center gap-1.5 mb-3">
+        <Shield size={15} color={C.pink} />
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>4 pilares da rotina · esta semana</span>
+      </div>
+      <div className="flex flex-col gap-3.5">
+        {pillars.map((p) => (
+          <div key={p.key} className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: p.level !== "empty" ? "rgba(34,197,94,0.15)" : C.surface2, border: `1px solid ${p.level !== "empty" ? "#22C55E" : C.line}` }}>
+              {p.level !== "empty" ? <Check size={15} color="#22C55E" strokeWidth={3} /> : <p.icon size={14} color={C.muted} />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <span className="font-bold text-sm" style={{ color: C.text }}>{p.label}</span>
+                <LevelChip level={p.level} />
+              </div>
+              <p className="text-[11px]" style={{ color: C.muted }}>{p.stat}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: C.muted, opacity: 0.75 }}>{p.goal}</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1490,13 +1629,13 @@ function HydrationReminder({ goal, drank, pct, behind, noWeight, onAdd }) {
 /* ------------------------------------------------------------------ */
 /*  Week View                                                           */
 /* ------------------------------------------------------------------ */
-function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelectedDate, cardsForDate, recentVictories, streaks, onOpenCard, onAddCard, onQuickToggle }) {
+function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelectedDate, cardsForDate, recentVictories, streaks, onOpenCard, onAddCard, onQuickToggle, hideIntro }) {
   const C = useC();
   const today = toISO(new Date());
   return (
     <div className="px-5">
-      <QuoteBlock />
-      <StreakCard streaks={streaks} />
+      {!hideIntro && <QuoteBlock />}
+      {!hideIntro && <StreakCard streaks={streaks} />}
 
       <div className="flex items-center justify-between mb-3">
         <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-2 rounded-full" style={{ background: C.surface2 }}>
@@ -1566,14 +1705,14 @@ function WeekView({ weekStart, setWeekStart, weekDays, selectedDate, setSelected
           {fromISO(selectedDate).toLocaleDateString("pt-BR", { weekday: "long" })}
         </span>
         <button onClick={onAddCard} className="flex items-center gap-1 text-xs font-bold" style={{ color: C.pink }}>
-          <Plus size={14} /> Novo treino
+          <Plus size={14} /> Novo evento
         </button>
       </div>
 
       <div className="flex flex-col gap-3">
         {cardsForDate(selectedDate).length === 0 && (
           <div className="rounded-3xl p-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
-            <p className="text-sm" style={{ color: C.muted }}>Nenhum treino marcado. Toca em "Novo treino" pra organizar o dia.</p>
+            <p className="text-sm" style={{ color: C.muted }}>Nenhum evento marcado. Toca em "Novo evento" pra organizar o dia.</p>
           </div>
         )}
         {cardsForDate(selectedDate).map((occ) => (
@@ -3405,7 +3544,7 @@ function CardFormModal({ card, onClose, onSave }) {
   }
 
   return (
-    <Modal onClose={onClose} title={card.__new ? "Novo treino" : "Editar treino"}>
+    <Modal onClose={onClose} title={card.__new ? "Novo evento" : "Editar evento"}>
       <Field label="Título">
         <input
           className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
@@ -3434,6 +3573,11 @@ function CardFormModal({ card, onClose, onSave }) {
             value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} />
         </Field>
       </div>
+
+      <Field label="Término (opcional — usado pra somar horas na rotina)">
+        <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
+          value={draft.endTime || ""} onChange={(e) => setDraft({ ...draft, endTime: e.target.value })} />
+      </Field>
 
       <Field label="Repetição">
         <div className="flex flex-wrap gap-2 mb-2">
@@ -3495,7 +3639,7 @@ function CardFormModal({ card, onClose, onSave }) {
         className="w-full py-3 rounded-2xl font-bold text-white mt-2"
         style={{ background: draft.title.trim() ? C.pink : C.line }}
       >
-        SALVAR TREINO
+        SALVAR EVENTO
       </button>
     </Modal>
   );
