@@ -568,7 +568,7 @@ export default function App() {
   const [nutrition, setNutrition] = useState(null); // perfil do gerador de plano alimentar
   const [tasks, setTasks] = useState([]);
   const [themePref, setThemePref] = useState("auto");
-  const [tab, setTab] = useState("tarefas");
+  const [tab, setTab] = useState("hoje");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [selectedDate, setSelectedDate] = useState(toISO(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
@@ -934,11 +934,12 @@ export default function App() {
             hydration={hydration} weight={weight} onAddHydration={addHydration}
             onOpenCard={(occ) => setActiveCard(occ)}
             onAddToday={() => openNewCard(toISO(new Date()))}
-            goToDay={(iso) => { setSelectedDate(iso); setWeekStart(startOfWeek(fromISO(iso))); setTab("organizacao"); }}
+            goToDay={(iso) => { setSelectedDate(iso); setWeekStart(startOfWeek(fromISO(iso))); setTab("treinos"); }}
+            tasks={tasks} onUpdateTasks={updateTasks}
           />
         )}
 
-        {tab === "organizacao" && (
+        {tab === "treinos" && (
           <OrganizacaoView
             cards={cards} completions={completions}
             week={{
@@ -955,12 +956,24 @@ export default function App() {
           />
         )}
 
-        {tab === "painel" && (
-          <PainelView
-            cards={cards} completions={completions}
-            checkins={checkins} onSaveCheckin={saveCheckin}
-            jumps={jumps} onSaveJump={saveJump}
-            insights={insights}
+        {tab === "progresso" && (
+          <ProgressoView
+            painel={{
+              cards, completions, checkins, onSaveCheckin: saveCheckin,
+              jumps, onSaveJump: saveJump, insights,
+            }}
+            goals={goals}
+            onOpenGoal={(g) => setActiveGoal(g)}
+            onAddGoal={() => setShowAddGoal(true)}
+            onQuickAddGoal={(id, delta) =>
+              updateGoals((prev) =>
+                prev.map((g) =>
+                  g.id === id
+                    ? { ...g, current: Math.max(0, Math.min((g.target || Infinity), (g.current || 0) + delta)) }
+                    : g
+                )
+              )
+            }
           />
         )}
 
@@ -974,29 +987,9 @@ export default function App() {
           />
         )}
 
-        {tab === "metas" && (
-          <GoalsView
-            goals={goals}
-            onOpen={(g) => setActiveGoal(g)}
-            onQuickAdd={(id, delta) =>
-              updateGoals((prev) =>
-                prev.map((g) =>
-                  g.id === id
-                    ? { ...g, current: Math.max(0, Math.min((g.target || Infinity), (g.current || 0) + delta)) }
-                    : g
-                )
-              )
-            }
-          />
-        )}
-
-        {tab === "tarefas" && (
-          <TarefasView tasks={tasks} onUpdate={updateTasks} />
-        )}
-
-        {(tab === "organizacao" || tab === "metas") && (
+        {tab === "treinos" && (
           <button
-            onClick={() => (tab === "organizacao" ? openNewCard(selectedDate) : setShowAddGoal(true))}
+            onClick={() => openNewCard(selectedDate)}
             className="fixed right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg z-40"
             style={{ bottom: "88px", background: C.pink, boxShadow: `0 8px 24px ${C.pinkSoft}` }}
           >
@@ -1159,12 +1152,10 @@ function QuoteBlock() {
 function BottomNav({ tab, setTab }) {
   const C = useC();
   const items = [
-    { key: "tarefas", label: "Tarefas", icon: ListChecks },
     { key: "hoje", label: "Hoje", icon: Home },
-    { key: "organizacao", label: "Organização", icon: CalendarDays },
-    { key: "painel", label: "Painel", icon: BarChart3 },
+    { key: "treinos", label: "Treinos", icon: CalendarDays },
+    { key: "progresso", label: "Progresso", icon: TrendingUp },
     { key: "nutricao", label: "Nutrição", icon: Apple },
-    { key: "metas", label: "Metas", icon: Target },
   ];
   return (
     <div
@@ -1202,83 +1193,6 @@ function BottomNav({ tab, setTab }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Tarefas View — lista simples estilo Notion                          */
-/* ------------------------------------------------------------------ */
-function TarefasView({ tasks, onUpdate }) {
-  const C = useC();
-  const [text, setText] = useState("");
-  const [showDone, setShowDone] = useState(false);
-  const active = tasks.filter((t) => !t.done);
-  const done = tasks.filter((t) => t.done);
-  const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
-
-  function add() {
-    const v = text.trim();
-    if (!v) return;
-    onUpdate((prev) => [{ id: `t_${Date.now()}`, text: v, done: false }, ...prev]);
-    setText("");
-  }
-  const toggle = (id) => onUpdate((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
-  const remove = (id) => onUpdate((prev) => prev.filter((t) => t.id !== id));
-
-  return (
-    <div className="px-5">
-      <SectionHeader eyebrow="Organização" title="TAREFAS" />
-
-      <div className="flex gap-2 mb-5">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") add(); }}
-          placeholder="Adicionar tarefa…"
-          className="flex-1 rounded-2xl px-4 py-3 text-sm outline-none"
-          style={inputStyle}
-        />
-        <button
-          onClick={add}
-          disabled={!text.trim()}
-          className="w-12 rounded-2xl flex items-center justify-center shrink-0"
-          style={{ background: text.trim() ? C.pink : C.line }}
-          aria-label="Adicionar tarefa"
-        >
-          <Plus size={20} color="#fff" strokeWidth={2.5} />
-        </button>
-      </div>
-
-      {active.length === 0 && done.length === 0 && (
-        <div className="rounded-3xl p-6 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
-          <p className="text-sm" style={{ color: C.muted }}>Nenhuma tarefa ainda. Escreve a primeira aí em cima.</p>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        {active.map((t) => (
-          <TaskRow key={t.id} task={t} onToggle={() => toggle(t.id)} onDelete={() => remove(t.id)} />
-        ))}
-      </div>
-
-      {done.length > 0 && (
-        <div className="mt-6">
-          <button onClick={() => setShowDone((s) => !s)} className="w-full flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>
-              Concluídas · {done.length}
-            </span>
-            <ChevronRight size={16} color={C.muted} style={{ transform: showDone ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
-          </button>
-          {showDone && (
-            <div className="flex flex-col gap-2">
-              {done.map((t) => (
-                <TaskRow key={t.id} task={t} onToggle={() => toggle(t.id)} onDelete={() => remove(t.id)} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function TaskRow({ task, onToggle, onDelete }) {
   const C = useC();
   const done = task.done;
@@ -1311,7 +1225,7 @@ function OrganizacaoView({ cards, completions, week, month }) {
   return (
     <>
       <div className="px-5">
-        <SectionHeader eyebrow="Planeje sua rotina" title="ORGANIZAÇÃO" />
+        <SectionHeader eyebrow="Planeje sua rotina" title="TREINOS" />
         <GuideCard />
         <PillarsCard cards={cards} completions={completions} />
         <div className="flex gap-2 mb-4">
@@ -1449,7 +1363,7 @@ function PillarsCard({ cards, completions }) {
 /* ------------------------------------------------------------------ */
 /*  Hoje View — dashboard do dia (frase, treino, água, semana, próximos) */
 /* ------------------------------------------------------------------ */
-function HojeView({ cards, completions, hydration, weight, onAddHydration, onOpenCard, onAddToday, goToDay }) {
+function HojeView({ cards, completions, hydration, weight, onAddHydration, onOpenCard, onAddToday, goToDay, tasks, onUpdateTasks }) {
   const C = useC();
   const now = new Date();
   const today = toISO(now);
@@ -1564,6 +1478,78 @@ function HojeView({ cards, completions, hydration, weight, onAddHydration, onOpe
             ))}
           </div>
         </>
+      )}
+
+      {/* f) Tarefas — agora moram no resumo do dia */}
+      <div className="mt-7">
+        <HojeTasks tasks={tasks} onUpdate={onUpdateTasks} />
+      </div>
+    </div>
+  );
+}
+
+/* Lista de tarefas embutida na aba Hoje (mesma UI da antiga aba Tarefas). */
+function HojeTasks({ tasks, onUpdate }) {
+  const C = useC();
+  const [text, setText] = useState("");
+  const [showDone, setShowDone] = useState(false);
+  const active = tasks.filter((t) => !t.done);
+  const done = tasks.filter((t) => t.done);
+  const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
+
+  function add() {
+    const v = text.trim();
+    if (!v) return;
+    onUpdate((prev) => [{ id: `t_${Date.now()}`, text: v, done: false }, ...prev]);
+    setText("");
+  }
+  const toggle = (id) => onUpdate((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const remove = (id) => onUpdate((prev) => prev.filter((t) => t.id !== id));
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-[11px] font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.1em" }}>Tarefas</span>
+      </div>
+      <div className="flex gap-2 mb-3">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+          placeholder="Adicionar tarefa…"
+          className="flex-1 rounded-2xl px-4 py-2.5 text-sm outline-none"
+          style={inputStyle}
+        />
+        <button onClick={add} disabled={!text.trim()} className="w-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: text.trim() ? C.pink : C.line }} aria-label="Adicionar tarefa">
+          <Plus size={19} color="#fff" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {active.length === 0 && done.length === 0 && (
+        <div className="rounded-2xl p-4 text-center" style={{ background: C.surface, border: `1px dashed ${C.line}` }}>
+          <p className="text-xs" style={{ color: C.muted }}>Nenhuma tarefa. Escreve a primeira aí em cima.</p>
+        </div>
+      )}
+      <div className="flex flex-col gap-2">
+        {active.map((t) => (
+          <TaskRow key={t.id} task={t} onToggle={() => toggle(t.id)} onDelete={() => remove(t.id)} />
+        ))}
+      </div>
+
+      {done.length > 0 && (
+        <div className="mt-4">
+          <button onClick={() => setShowDone((s) => !s)} className="w-full flex items-center justify-between mb-2">
+            <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Concluídas · {done.length}</span>
+            <ChevronRight size={16} color={C.muted} style={{ transform: showDone ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
+          </button>
+          {showDone && (
+            <div className="flex flex-col gap-2">
+              {done.map((t) => (
+                <TaskRow key={t.id} task={t} onToggle={() => toggle(t.id)} onDelete={() => remove(t.id)} />
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1894,6 +1880,35 @@ function MonthView({ monthCursor, setMonthCursor, cards, completions, selectedDa
       </div>
       <p className="text-xs text-center mt-4" style={{ color: C.muted }}>Toca num dia pra ver a agenda na Semana.</p>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Progresso View — funde Painel (métricas) + Metas sob um toggle      */
+/* ------------------------------------------------------------------ */
+function ProgressoView({ painel, goals, onOpenGoal, onAddGoal, onQuickAddGoal }) {
+  const C = useC();
+  const [sub, setSub] = useState("painel");
+  return (
+    <>
+      <div className="px-5">
+        <SectionHeader eyebrow="Desempenho" title="PROGRESSO" />
+        <div className="flex items-center gap-2 mb-4">
+          <Pill small active={sub === "painel"} onClick={() => setSub("painel")}>Painel</Pill>
+          <Pill small active={sub === "metas"} onClick={() => setSub("metas")}>Metas</Pill>
+          {sub === "metas" && (
+            <button onClick={onAddGoal} className="ml-auto flex items-center gap-1 text-xs font-bold" style={{ color: C.pink }}>
+              <Plus size={14} /> Nova meta
+            </button>
+          )}
+        </div>
+      </div>
+      {sub === "painel" ? (
+        <PainelView {...painel} />
+      ) : (
+        <GoalsView goals={goals} onOpen={onOpenGoal} onQuickAdd={onQuickAddGoal} />
+      )}
+    </>
   );
 }
 
