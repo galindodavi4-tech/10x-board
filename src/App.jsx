@@ -10,6 +10,10 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, BarChart, Bar, Cell, ReferenceLine, ReferenceArea
 } from "recharts";
+import {
+  OBJETIVOS, objetivoInfo, CENARIOS, cenarioInfo, JOGO_CONTEXTO, TIPOS_TREINO,
+  calcularMetas, macroKeyFor, MACROS, AVISO_RODAPE, AVISO_AVANCADO,
+} from "./data/nutricao";
 
 /* ------------------------------------------------------------------ */
 /*  Theme tokens                                                        */
@@ -458,7 +462,7 @@ async function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
-  return { cards: [], goals: [], checkins: [], completions: [], jumps: [], hydration: [], weight: null, nutrition: null, tasks: [], theme: "auto" };
+  return { cards: [], goals: [], checkins: [], completions: [], jumps: [], hydration: [], weight: null, nutrition: null, nutricao: null, tasks: [], theme: "auto" };
 }
 async function saveData(data) {
   try {
@@ -565,7 +569,8 @@ export default function App() {
   const [jumps, setJumps] = useState([]);
   const [hydration, setHydration] = useState([]);
   const [weight, setWeight] = useState(null);
-  const [nutrition, setNutrition] = useState(null); // perfil do gerador de plano alimentar
+  const [nutrition, setNutrition] = useState(null); // perfil do gerador de plano alimentar (versão genérica antiga)
+  const [nutricao, setNutricao] = useState(null); // perfil CFGA (gerador de plano alimentar novo)
   const [tasks, setTasks] = useState([]);
   const [themePref, setThemePref] = useState("auto");
   const [tab, setTab] = useState("hoje");
@@ -591,6 +596,7 @@ export default function App() {
       setHydration(data.hydration || []);
       setWeight(data.weight ?? null);
       setNutrition(data.nutrition ?? null);
+      setNutricao(data.nutricao ?? null);
       setTasks(data.tasks || []);
       setThemePref(data.theme || "auto");
       setLoading(false);
@@ -617,10 +623,11 @@ export default function App() {
       hydration: partial.hydration !== undefined ? partial.hydration : hydration,
       weight: partial.weight !== undefined ? partial.weight : weight,
       nutrition: partial.nutrition !== undefined ? partial.nutrition : nutrition,
+      nutricao: partial.nutricao !== undefined ? partial.nutricao : nutricao,
       tasks: partial.tasks !== undefined ? partial.tasks : tasks,
       theme: partial.theme !== undefined ? partial.theme : themePref,
     });
-  }, [cards, goals, checkins, completions, jumps, hydration, weight, nutrition, tasks, themePref]);
+  }, [cards, goals, checkins, completions, jumps, hydration, weight, nutrition, nutricao, tasks, themePref]);
 
   function updateTasks(updater) {
     setTasks((prev) => {
@@ -678,6 +685,10 @@ export default function App() {
   function updateNutrition(next) {
     setNutrition(next);
     persist({ nutrition: next });
+  }
+  function updateNutricao(next) {
+    setNutricao(next);
+    persist({ nutricao: next });
   }
   function updateTheme(next) {
     setThemePref(next);
@@ -982,7 +993,7 @@ export default function App() {
             hydration={hydration} weight={weight}
             onAddHydration={addHydration} onDeleteHydration={deleteHydration}
             onSaveWeight={updateWeight}
-            nutrition={nutrition} onSaveNutrition={updateNutrition}
+            nutricao={nutricao} onSaveNutricao={updateNutricao}
             cards={cards} completions={completions}
           />
         )}
@@ -2012,26 +2023,18 @@ function PainelView({ cards, completions, checkins, onSaveCheckin, jumps, onSave
 /* ------------------------------------------------------------------ */
 /*  Nutrição View — hidratação hoje; alimentação chega depois          */
 /* ------------------------------------------------------------------ */
-function NutricaoView({ hydration, weight, onAddHydration, onDeleteHydration, onSaveWeight, nutrition, onSaveNutrition, cards, completions }) {
+function NutricaoView({ hydration, weight, onAddHydration, onDeleteHydration, onSaveWeight, nutricao, onSaveNutricao, cards, completions }) {
   const C = useC();
-  const [ws, we] = getPeriodRange("semana");
-  // Frequência de treino a partir da agenda do app (Painel/Semana). Alimenta o
-  // fator de atividade. Conservador: sem agenda, assume frequência moderada.
-  const sessionsPerWeek = useMemo(() => {
-    const planned = occurrencesInRange(cards, completions, ws, we).length;
-    if (planned > 0) return planned;
-    return nutrition?.trainings?.length ? 4 : 2;
-  }, [cards, completions, ws, we, nutrition]);
-
   return (
     <div className="px-5">
       <SectionHeader eyebrow="Nutrição do atleta" title="NUTRIÇÃO" />
 
-      <NutritionPlanner
-        profile={nutrition}
-        onSaveProfile={onSaveNutrition}
-        sessionsPerWeek={sessionsPerWeek}
+      <PlanoAlimentar
+        perfil={nutricao}
+        onSave={onSaveNutricao}
         weight={weight}
+        cards={cards}
+        completions={completions}
       />
 
       <div className="mt-8" />
@@ -2043,6 +2046,286 @@ function NutricaoView({ hydration, weight, onAddHydration, onDeleteHydration, on
         onAdd={onAddHydration} onDelete={onDeleteHydration} onSaveWeight={onSaveWeight}
       />
     </div>
+  );
+}
+
+/* ==================================================================
+ *  GERADOR DE PLANO ALIMENTAR — CFGA (Etapa 1: perfil + cálculo)
+ *  Números 100% do arquivo REGRAS_NUTRICAO_CFGA (src/data/nutricao.js).
+ * ================================================================== */
+function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
+  const C = useC();
+  const [editando, setEditando] = useState(false);
+
+  // Treinos usados no cálculo: os que o usuário informou no perfil (dia típico).
+  const metas = useMemo(() => (perfil ? calcularMetas(perfil, perfil.treinos || []) : null), [perfil]);
+
+  if (!perfil) {
+    return (
+      <>
+        <div className="rounded-3xl p-6 mb-6 text-center" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: C.pinkSoft }}>
+            <Apple size={26} color={C.pink} />
+          </div>
+          <h3 className="text-2xl font-black uppercase" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>Gerador de plano alimentar</h3>
+          <p className="text-sm mt-1.5 mb-4" style={{ color: C.muted }}>
+            Baseado no método CFGA (Lucas Orsatti). Responda o questionário e o app calcula suas metas diárias — calorias, carbo, proteína, gordura e água.
+          </p>
+          <button onClick={() => setEditando(true)} className="w-full py-3 rounded-2xl font-bold text-white" style={{ background: C.pink }}>
+            Gerar meu plano
+          </button>
+        </div>
+        {editando && (
+          <QuestionarioCFGA
+            inicial={perfilPadrao(weight)}
+            cards={cards} completions={completions}
+            onClose={() => setEditando(false)}
+            onSave={(p) => { onSave(p); setEditando(false); }}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div>
+      <ResumoNutricional metas={metas} perfil={perfil} onEdit={() => setEditando(true)} />
+
+      <div className="rounded-2xl p-3.5 mb-2 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+        <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
+        <p className="text-[11px] leading-snug" style={{ color: C.muted }}>{AVISO_RODAPE}</p>
+      </div>
+
+      {editando && (
+        <QuestionarioCFGA
+          inicial={perfil}
+          cards={cards} completions={completions}
+          onClose={() => setEditando(false)}
+          onSave={(p) => { onSave(p); setEditando(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* Perfil vazio inicial (peso pré-preenchido se já houver na hidratação). */
+function perfilPadrao(weight) {
+  return {
+    v: "cfga",
+    pesoKg: weight != null ? String(weight) : "",
+    idade: "", alturaCm: "",
+    percentualGordura: "", massaLivreGordura: "",
+    objetivo: "performance", cenario: "rotina", jogo: "nenhum",
+    acorda: "07:00", dorme: "23:00", escolaInicio: "", escolaFim: "",
+    treinos: [{ tipo: "musculacao", inicio: "16:00", duracaoMin: "60" }],
+  };
+}
+
+/* Puxa os treinos de hoje da agenda (Organização) → formato do perfil.
+   Mapa conservador: forca→musculação; campo/jogo/tecnico→futebol.
+   REVISAR CFGA: "cardio" não mapeia para os METs do curso (só futebol/
+   musculação), então é ignorado no auto-preenchimento. */
+function treinosDoDiaApp(cards, completions) {
+  const hoje = toISO(new Date());
+  const occ = getOccurrencesForDate(cards, completions, hoje);
+  const mapa = { forca: "musculacao", campo: "futebol", jogo: "futebol", tecnico: "futebol" };
+  return occ
+    .filter((o) => mapa[o.type])
+    .map((o) => {
+      let dur = 60;
+      if (o.time && o.endTime) {
+        let d = hmToMin(o.endTime) - hmToMin(o.time);
+        if (d < 0) d += 1440;
+        if (d > 0) dur = d;
+      }
+      return { tipo: mapa[o.type], inicio: o.time || "16:00", duracaoMin: String(dur) };
+    });
+}
+
+function ResumoNutricional({ metas, perfil, onEdit }) {
+  const C = useC();
+  const obj = objetivoInfo(perfil.objetivo);
+  const macroBox = (label, faixa, unidade, color) => (
+    <div className="flex-1 rounded-2xl py-2.5 px-2 text-center" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+      <p className="text-base font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color }}>
+        {faixa[0]}–{faixa[1]}<span className="text-[10px]" style={{ color: C.muted }}> {unidade}</span>
+      </p>
+      <p className="text-[10px] font-bold uppercase mt-0.5" style={{ color: C.muted }}>{label}</p>
+    </div>
+  );
+  const jogoAvancado = perfil.jogo === "vespera_24h";
+
+  return (
+    <div className="rounded-3xl p-5 mb-5" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase" style={{ color: C.pink, letterSpacing: "0.1em" }}>
+            {obj.label} · {cenarioInfo(perfil.cenario).label}
+          </p>
+          <p className="text-4xl font-black leading-none mt-0.5" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.text }}>
+            {metas.meta}<span className="text-base" style={{ color: C.muted }}> kcal/dia</span>
+          </p>
+        </div>
+        <button onClick={onEdit} className="p-2 rounded-full shrink-0" style={{ background: C.surface2 }} aria-label="Editar questionário">
+          <Pencil size={14} color={C.muted} />
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        {macroBox("Carbo", metas.cho, "g", C.pink)}
+        {macroBox("Proteína", metas.ptn, "g", "#22C55E")}
+        {macroBox("Gordura", metas.lip, "g", AMBER)}
+      </div>
+
+      <div className="rounded-2xl p-3 mb-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold" style={{ color: C.text }}>💧 Água</span>
+          <span className="text-sm font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: WATER_BLUE }}>{metas.agua[0]}–{metas.agua[1]} ml/dia</span>
+        </div>
+        <div className="flex items-center justify-between mt-1.5">
+          <span className="text-xs font-bold" style={{ color: C.text }}>Proteína por refeição</span>
+          <span className="text-xs font-bold" style={{ color: C.muted }}>máx {metas.ptnPorRefeicao} g</span>
+        </div>
+      </div>
+
+      {/* Como o número foi montado (transparência do cálculo) */}
+      <p className="text-[11px] leading-snug" style={{ color: C.muted }}>
+        GEB (Tisley{metas.usouMLG ? `, MLG ${metas.mlg}kg` : ", sem MLG"}) {metas.geb} kcal
+        {metas.gastos.length > 0 && (
+          <> + treino {metas.gastos.map((g) => `${TIPOS_TREINO.find((t) => t.key === g.tipo)?.label || g.tipo} ${g.kcal}`).join(" + ")}</>
+        )} = VET {metas.vet} kcal
+        {metas.ajuste !== 0 && <> · ajuste {metas.ajuste > 0 ? "+" : ""}{metas.ajuste}</>}
+      </p>
+
+      {metas.ajusteBloqueado && (
+        <p className="text-[11px] mt-2 flex items-start gap-1.5" style={{ color: AMBER }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" /> Cenário lesão: o déficit foi bloqueado — o curso alerta que cortar calorias na lesão pode ser um tiro no pé.
+        </p>
+      )}
+      {jogoAvancado && (
+        <p className="text-[11px] mt-2 flex items-start gap-1.5" style={{ color: AMBER }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {AVISO_AVANCADO}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* Questionário CFGA — salvo no localStorage, reeditável. */
+function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
+  const C = useC();
+  const [d, setD] = useState(() => ({ ...perfilPadrao(null), ...inicial, treinos: (inicial.treinos && inicial.treinos.length ? inicial.treinos.map((t) => ({ ...t })) : perfilPadrao(null).treinos) }));
+  const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
+  const set = (patch) => setD((p) => ({ ...p, ...patch }));
+  const setTreino = (i, patch) => setD((p) => ({ ...p, treinos: p.treinos.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
+  const addTreino = () => setD((p) => ({ ...p, treinos: [...p.treinos, { tipo: "futebol", inicio: "16:00", duracaoMin: "90" }] }));
+  const removeTreino = (i) => setD((p) => ({ ...p, treinos: p.treinos.filter((_, j) => j !== i) }));
+  const puxarDoApp = () => {
+    const ts = treinosDoDiaApp(cards, completions);
+    if (ts.length) setD((p) => ({ ...p, treinos: ts }));
+  };
+  const podeSalvar = Number(d.pesoKg) > 0;
+
+  return (
+    <Modal onClose={onClose} title="Seu perfil">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Peso (kg) *">
+          <input type="number" step="0.5" min="0" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
+            value={d.pesoKg} onChange={(e) => set({ pesoKg: e.target.value })} placeholder="Ex: 72" />
+        </Field>
+        <Field label="Idade">
+          <input type="number" min="0" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
+            value={d.idade} onChange={(e) => set({ idade: e.target.value })} placeholder="Ex: 17" />
+        </Field>
+      </div>
+      <Field label="Altura (cm)">
+        <input type="number" min="0" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
+          value={d.alturaCm} onChange={(e) => set({ alturaCm: e.target.value })} placeholder="Ex: 175" />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="% gordura (opcional)">
+          <input type="number" step="0.1" min="0" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
+            value={d.percentualGordura} onChange={(e) => set({ percentualGordura: e.target.value, massaLivreGordura: "" })} placeholder="Ex: 12" />
+        </Field>
+        <Field label="Massa livre gordura (kg)">
+          <input type="number" step="0.1" min="0" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
+            value={d.massaLivreGordura} onChange={(e) => set({ massaLivreGordura: e.target.value, percentualGordura: "" })} placeholder="opcional" />
+        </Field>
+      </div>
+      <p className="text-[10px] -mt-2 mb-3" style={{ color: C.muted }}>Se informar % de gordura ou MLG, uso a fórmula GEB com massa livre de gordura (Tisley); senão, a fórmula sem MLG.</p>
+
+      <Field label="Objetivo">
+        <div className="flex flex-wrap gap-2">
+          {OBJETIVOS.map((o) => (
+            <Pill key={o.key} small active={d.objetivo === o.key} onClick={() => set({ objetivo: o.key })}>{o.short}</Pill>
+          ))}
+        </div>
+      </Field>
+      <Field label="Cenário atual">
+        <div className="flex flex-wrap gap-2">
+          {CENARIOS.map((c) => (
+            <Pill key={c.key} small active={d.cenario === c.key} onClick={() => set({ cenario: c.key })}>{c.label}</Pill>
+          ))}
+        </div>
+      </Field>
+      <Field label="Contexto de jogo">
+        <div className="flex flex-wrap gap-2">
+          {JOGO_CONTEXTO.map((j) => (
+            <Pill key={j.key} small active={d.jogo === j.key} onClick={() => set({ jogo: j.key })}>{j.label}</Pill>
+          ))}
+        </div>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Acorda"><input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.acorda} onChange={(e) => set({ acorda: e.target.value })} /></Field>
+        <Field label="Dorme"><input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.dorme} onChange={(e) => set({ dorme: e.target.value })} /></Field>
+      </div>
+      <Field label="Escola (opcional)">
+        <div className="grid grid-cols-2 gap-3">
+          <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.escolaInicio} onChange={(e) => set({ escolaInicio: e.target.value })} />
+          <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.escolaFim} onChange={(e) => set({ escolaFim: e.target.value })} />
+        </div>
+      </Field>
+
+      <Field label="Treinos do dia">
+        <button onClick={puxarDoApp} className="w-full mb-2 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1" style={{ background: C.surface2, color: C.pink, border: `1px dashed ${C.line}` }}>
+          <CalendarDays size={13} /> Puxar treinos de hoje da agenda
+        </button>
+        <div className="flex flex-col gap-3">
+          {d.treinos.map((t, i) => (
+            <div key={i} className="rounded-2xl p-3" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold uppercase" style={{ color: C.muted }}>Treino {i + 1}</span>
+                {d.treinos.length > 1 && <button onClick={() => removeTreino(i)} aria-label="Remover"><Trash2 size={14} color={C.muted} /></button>}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {TIPOS_TREINO.map((tp) => (
+                  <Pill key={tp.key} small active={t.tipo === tp.key} onClick={() => setTreino(i, { tipo: tp.key })}>{tp.label}</Pill>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Início</label>
+                  <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={t.inicio} onChange={(e) => setTreino(i, { inicio: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Duração (min)</label>
+                  <input type="number" min="0" step="5" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={t.duracaoMin} onChange={(e) => setTreino(i, { duracaoMin: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          ))}
+          <button onClick={addTreino} className="flex items-center justify-center gap-1 py-2 rounded-xl text-sm font-bold" style={{ background: C.surface2, color: C.pink, border: `1px dashed ${C.line}` }}>
+            <Plus size={15} /> Adicionar treino
+          </button>
+        </div>
+      </Field>
+
+      <button onClick={() => podeSalvar && onSave({ ...d, v: "cfga" })} disabled={!podeSalvar} className="w-full py-3 rounded-2xl font-bold text-white mt-1" style={{ background: podeSalvar ? C.pink : C.line }}>
+        CALCULAR METAS
+      </button>
+      {!podeSalvar && <p className="text-[11px] text-center mt-2" style={{ color: C.muted }}>Informe pelo menos o peso.</p>}
+    </Modal>
   );
 }
 
