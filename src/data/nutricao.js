@@ -40,7 +40,12 @@ export const JOGO_CONTEXTO = [
 /* Gasto_atividade = MET × peso_kg × duração_horas                    */
 export const MET = {
   futebol: 10, // futebol intenso (campo/jogo)
-  musculacao: 5.25, // média da faixa 4,5–6 do curso
+  // Musculação tem faixa real 4,5–6 (varia com a intensidade), MAS o exemplo
+  // oficial passo a passo do curso usa 4,5 (315 kcal p/ 70kg × 1h). Quando o
+  // doc conflita com o exemplo trabalhado do Lucas, o exemplo dele ganha —
+  // e assim o cálculo bate 100% com o VET oficial (2.761 p/ o exemplo).
+  // Se um dia virar ajustável por intensidade, aí sim usa a faixa 4,5–6.
+  musculacao: 4.5,
 };
 export const TIPOS_TREINO = [
   { key: "musculacao", label: "Musculação", met: MET.musculacao },
@@ -254,8 +259,10 @@ export function calcGastosTreinos(perfil, treinos) {
 export function macroKeyFor(perfil) {
   if (perfil.cenario === "lesao") return "lesao"; // §4.6 sobrepõe objetivo
   if (perfil.jogo === "vespera_24h") return "pre_jogo_24h"; // §4.3 carga de carbo
-  // REVISAR CFGA: o material não define macro g/kg próprio para "dia de jogo".
-  // Conservador: manter a faixa alta de véspera (glicogênio) no dia do jogo.
+  // DECISÃO NOSSA (não é número do curso): o material NÃO dá um macro g/kg
+  // próprio para "dia de jogo" — ele trata o dia do jogo refeição por
+  // refeição, não por meta g/kg. Herdamos a faixa da véspera (6–8 g/kg CHO)
+  // por ser conservador para o glicogênio. Aprovado pelo usuário.
   if (perfil.jogo === "dia_jogo") return "pre_jogo_24h";
   return perfil.objetivo; // massa | perda_gordura | performance
 }
