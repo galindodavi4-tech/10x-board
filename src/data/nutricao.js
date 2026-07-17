@@ -52,12 +52,13 @@ export const TIPOS_TREINO = [
   { key: "futebol", label: "Futebol", met: MET.futebol },
 ];
 
-/* ---- §1.4 Ajuste calórico por objetivo (valores do código §12.4) -- */
-export const AJUSTE_KCAL = {
-  massa: 750, // faixa oficial +500 a +1000
-  perda_gordura: -750, // faixa oficial −500 a −1000 (alternativa: 25 kcal/kg/dia)
-  performance: 0, // manutenção
-};
+/* ---- §1.4 Ajuste calórico por objetivo -----------------------------
+ * DECISÃO NOSSA (não travar num número): o curso diz que o superávit/déficit
+ * é "definido pela avaliação individual" (faixa 500–1000). Travar contraria
+ * o método, então deixamos AJUSTÁVEL — o usuário controla de 500 a 1000,
+ * começando em 500. Massa = +controle; perda de gordura = −controle;
+ * performance = 0 (manutenção). Na lesão o déficit é bloqueado (§4.6). */
+export const AJUSTE_FAIXA = { min: 500, max: 1000, inicio: 500, passo: 50 };
 /* Alternativa prática do curso p/ perda de gordura (§1.4 / §2.2). */
 export const PERDA_GORDURA_KCAL_POR_KG = 25;
 
@@ -278,7 +279,9 @@ export function calcularMetas(perfil, treinos) {
   const macroKey = macroKeyFor(perfil);
   const m = MACROS[macroKey] || MACROS.performance;
 
-  let ajuste = AJUSTE_KCAL[perfil.objetivo] ?? 0;
+  // Ajuste calórico configurável (faixa 500–1000, começa em 500).
+  const ctrl = Math.max(AJUSTE_FAIXA.min, Math.min(AJUSTE_FAIXA.max, num(perfil.ajusteControle) || AJUSTE_FAIXA.inicio));
+  let ajuste = perfil.objetivo === "massa" ? ctrl : perfil.objetivo === "perda_gordura" ? -ctrl : 0;
   // §4.6: na lesão o curso é explícito — NÃO cortar calorias.
   const ajusteBloqueado = perfil.cenario === "lesao" && ajuste < 0;
   if (ajusteBloqueado) ajuste = 0;
@@ -302,4 +305,153 @@ export function calcularMetas(perfil, treinos) {
 export function gramasAlimento(macroAlvoG, macroPor100g) {
   if (!macroPor100g) return null;
   return round((macroAlvoG / macroPor100g) * 100);
+}
+
+/* ==================================================================
+ *  ETAPA 2 — MOTOR DE DECISÃO DE REFEIÇÕES (§12.1)
+ *  Decide QUAIS refeições existem, ESSENCIAL vs RECOMENDADO, e distribui
+ *  os macros concentrando carboidrato perto do treino — MAS mantendo LEVE
+ *  a refeição colada no treino (a carga pesada vai nas refeições anteriores,
+ *  §3.2: 1–2h antes = 1–2 g/kg; 30–15 min antes = só 30–60g).
+ * ================================================================== */
+const hm2min = (hm) => { if (!hm) return null; const [h, m] = hm.split(":").map(Number); return h * 60 + (m || 0); };
+const min2hm = (min) => { min = ((Math.round(min) % 1440) + 1440) % 1440; const h = Math.floor(min / 60), m = min % 60; return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`; };
+
+/* Duração assumida de cada refeição (min) — usada p/ detectar "colado". */
+const DUR_REFEICAO = { cafe: 60, almoco: 60, jantar: 60, lanche_manha: 20, lanche_tarde: 20, ceia: 30, pre_treino: 20, pos_treino: 20, intra: 0 };
+/* Limiar de "colado no treino": refeição termina < 45 min antes → é a       */
+/* pré imediata, mantém LEVE (janela 30–15 min = só 30–60g de CHO).          */
+const COLADO_MIN = 45;
+
+/* §12.1 — decide as refeições do dia e atribui pesos de macro por timing. */
+export function decidirRefeicoes(perfil) {
+  const wake = hm2min(perfil.acorda) ?? 7 * 60;
+  const sleep = hm2min(perfil.dorme) ?? 23 * 60;
+  const escFim = hm2min(perfil.escolaFim);
+  const escIni = hm2min(perfil.escolaInicio);
+  const aloj = perfil.cenario === "alojamento";
+  const diaJogo = perfil.jogo === "dia_jogo" || perfil.jogo === "vespera_24h";
+  const treinos = (perfil.treinos || [])
+    .filter((t) => t.inicio && num(t.duracaoMin) > 0)
+    .map((t) => ({ tipo: t.tipo, ini: hm2min(t.inicio), dur: num(t.duracaoMin), fim: hm2min(t.inicio) + num(t.duracaoMin) }))
+    .sort((a, b) => a.ini - b.ini);
+
+  const meals = [];
+  const add = (m) => meals.push({ dur: DUR_REFEICAO[m.key.replace(/_\d+$/, "")] ?? 20, ...m });
+
+  // SEMPRE
+  const tCafe = wake + 30;
+  add({ key: "cafe", label: "Café da manhã", tier: "essencial", time: tCafe });
+  const tAlmoco = escFim != null ? escFim + 15 : 12 * 60 + 30; // após a escola, se houver
+  add({ key: "almoco", label: "Almoço", tier: "essencial", time: tAlmoco });
+  let tJantar = 19 * 60;
+  if (treinos.length) tJantar = Math.max(tJantar, treinos[treinos.length - 1].fim + 90);
+  tJantar = Math.min(tJantar, sleep - 90);
+  add({ key: "jantar", label: "Jantar", tier: "essencial", time: tJantar });
+
+  // LANCHE manhã: intervalo café→almoço > 4h OU alojamento
+  const gapM = tAlmoco - (tCafe + DUR_REFEICAO.cafe);
+  if (gapM > 240 || aloj) {
+    add({
+      key: "lanche_manha", label: escIni != null ? "Lanche (escola)" : "Lanche da manhã", tier: "recomendado",
+      nota: aloj ? "Alojamento: foco em carboidrato (bolo, frutas, pães, suco)." : "Intervalo maior que 4h entre café e almoço — o curso recomenda um lanche pra manter a energia.",
+      time: tCafe + Math.round((tAlmoco - tCafe) / 2),
+    });
+  }
+  // LANCHE tarde: intervalo almoço→jantar > 4h
+  const gapT = tJantar - (tAlmoco + DUR_REFEICAO.almoco);
+  if (gapT > 240) {
+    add({ key: "lanche_tarde", label: "Lanche da tarde", tier: "recomendado", nota: "Intervalo maior que 4h entre almoço e jantar.", time: tAlmoco + Math.round((tJantar - tAlmoco) / 2) });
+  }
+
+  // Refeições ligadas ao treino
+  treinos.forEach((t, i) => {
+    // Já existe uma refeição principal terminando < 45 min antes → ela É a pré (leve).
+    const preExistente = meals.find((m) => ["cafe", "almoco", "jantar", "lanche_manha", "lanche_tarde"].includes(m.key) && t.ini - (m.time + m.dur) >= 0 && t.ini - (m.time + m.dur) < COLADO_MIN);
+    if (preExistente) {
+      preExistente.imediatoPre = true;
+      preExistente.nota = (preExistente.nota ? preExistente.nota + " " : "") + (diaJogo
+        ? "Colada no jogo: NÃO INVENTAR — só use o que já testou. Leve e de fácil digestão."
+        : "Colada no treino: mantenha LEVE e de fácil digestão (30–60g de CHO). A carga pesada de carbo vai nas refeições anteriores.");
+    } else {
+      add({
+        key: `pre_${i}`, label: "Pré-treino", tier: "essencial", preTreino: true,
+        nota: diaJogo ? "Pré-jogo: NÃO INVENTAR — só use o que já testou." : "Pré-treino 1–2h antes: 1–2 g/kg de CHO (ou 30–60g se for 30–15 min antes).",
+        time: t.ini - 60,
+      });
+    }
+    // INTRA: só se duração > 60 min (§3.3, regra de ouro)
+    if (t.dur > 60) {
+      const faixa = t.dur <= 150 ? "30–60g de CHO" : "até 90g de CHO";
+      add({ key: `intra_${i}`, label: "Intra-treino", tier: "essencial", intra: true, nota: `Treino de ${t.dur} min: ${faixa} durante (isotônico/gel/maltodextrina).`, time: t.ini + Math.round(t.dur / 2) });
+    } else if (i === 0) {
+      // ≤ 60 min: bochecho de CHO como curiosidade (não vira refeição).
+    }
+    // PÓS: até 60 min. Protocolo acelerado se 2 sessões coladas (< 2h).
+    const prox = treinos[i + 1];
+    const back2back = prox && prox.ini - t.fim < 120;
+    if (back2back) {
+      add({ key: `pos_${i}`, label: "Pós-treino (acelerado)", tier: "essencial", posTreino: true, acelerado: true, nota: "Duas sessões coladas: protocolo acelerado — 1–1,2 g/kg de CHO + 20–30g de PTN nos primeiros 30–60 min.", time: t.fim + 20 });
+    } else {
+      add({ key: `pos_${i}`, label: "Pós-treino", tier: "essencial", posTreino: true, nota: "Pós-treino (até 60 min): ~1 g/kg de CHO por hora + proteína pra repor glicogênio.", time: t.fim + 30 });
+    }
+  });
+
+  // CEIA / pré-sono: SEMPRE recomendar (§2.5 "4 refeições + 1 pré-sono")
+  add({ key: "ceia", label: "Ceia / pré-sono", tier: "recomendado", ceia: true, nota: "Pré-sono ajuda a compensar insuficiências nutricionais do dia. Proteína de absorção LENTA (leite/caseína), não whey com água.", time: sleep - 45 });
+
+  meals.sort((a, b) => a.time - b.time);
+  atribuirPesosMacro(meals, treinos);
+  return meals.map((m) => ({ ...m, hora: min2hm(m.time) }));
+}
+
+/* Pesos de macro por refeição — CHO puxa pra perto do treino, exceto a
+ * refeição colada (essa fica leve). §3.2 / §3.4. */
+function atribuirPesosMacro(meals, treinos) {
+  meals.forEach((m) => {
+    let carbW = 1.0, protW = 1.0, fatW = 1.0;
+    if (m.intra) { carbW = 1.4; protW = 0.2; fatW = 0.0; }
+    else if (m.posTreino) { carbW = 1.8; protW = 1.3; fatW = 0.3; }
+    else if (m.ceia) { carbW = 0.6; protW = 1.0; fatW = 1.0; }
+    else {
+      const mEnd = m.time + m.dur;
+      const treinoDepois = treinos.find((t) => t.ini >= mEnd); // treino após esta refeição
+      if (treinoDepois) {
+        const gap = treinoDepois.ini - mEnd;
+        if (m.imediatoPre || gap < COLADO_MIN) { carbW = 0.6; protW = 0.8; fatW = 0.3; } // colada → LEVE
+        else { carbW = 1.4; protW = 1.0; fatW = 0.8; } // antes do treino → puxa carbo
+      } else { carbW = 1.0; protW = 1.0; fatW = 1.0; } // sem treino depois (ex: jantar pós-treino)
+    }
+    if (m.preTreino && !m.imediatoPre) carbW = Math.max(carbW, 1.5);
+    m.carbW = carbW; m.protW = protW; m.fatW = fatW;
+  });
+}
+
+/* Distribui os macros diários entre as refeições pelos pesos.
+ * DECISÃO NOSSA: como o curso dá FAIXAS, uso o MEIO da faixa como alvo-ponto
+ * para distribuir (o valor exato é individualizável). Proteína por refeição
+ * é limitada ao teto de síntese (§2.5): min(0,3×peso ; 35g). */
+export function distribuirMacros(metas, refeicoes) {
+  const choAlvo = round((metas.cho[0] + metas.cho[1]) / 2);
+  const ptnAlvo = round((metas.ptn[0] + metas.ptn[1]) / 2);
+  const lipAlvo = round((metas.lip[0] + metas.lip[1]) / 2);
+  const sumC = refeicoes.reduce((a, m) => a + m.carbW, 0) || 1;
+  const sumP = refeicoes.reduce((a, m) => a + m.protW, 0) || 1;
+  const sumF = refeicoes.reduce((a, m) => a + m.fatW, 0) || 1;
+  const capPtn = metas.ptnPorRefeicao;
+  return refeicoes.map((m) => {
+    const cho = round(choAlvo * (m.carbW / sumC));
+    let ptn = round(ptnAlvo * (m.protW / sumP));
+    const ptnCapped = ptn > capPtn;
+    if (ptnCapped) ptn = capPtn;
+    const lip = round(lipAlvo * (m.fatW / sumF));
+    return { ...m, cho, ptn, lip, ptnCapped };
+  });
+}
+
+/* Plano completo: metas diárias + refeições com macros distribuídos. */
+export function montarPlano(perfil) {
+  const metas = calcularMetas(perfil, perfil.treinos || []);
+  const refeicoes = distribuirMacros(metas, decidirRefeicoes(perfil));
+  return { metas, refeicoes, choAlvoDia: round((metas.cho[0] + metas.cho[1]) / 2) };
 }

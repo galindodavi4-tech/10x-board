@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import {
   OBJETIVOS, objetivoInfo, CENARIOS, cenarioInfo, JOGO_CONTEXTO, TIPOS_TREINO,
-  calcularMetas, macroKeyFor, MACROS, AVISO_RODAPE, AVISO_AVANCADO,
+  montarPlano, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
 } from "./data/nutricao";
 
 /* ------------------------------------------------------------------ */
@@ -2057,8 +2057,8 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
   const C = useC();
   const [editando, setEditando] = useState(false);
 
-  // Treinos usados no cálculo: os que o usuário informou no perfil (dia típico).
-  const metas = useMemo(() => (perfil ? calcularMetas(perfil, perfil.treinos || []) : null), [perfil]);
+  // Plano completo (metas + refeições distribuídas) para o "dia típico".
+  const plano = useMemo(() => (perfil ? montarPlano(perfil) : null), [perfil]);
 
   if (!perfil) {
     return (
@@ -2089,7 +2089,16 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
 
   return (
     <div>
-      <ResumoNutricional metas={metas} perfil={perfil} onEdit={() => setEditando(true)} />
+      <ResumoNutricional metas={plano.metas} perfil={perfil} onEdit={() => setEditando(true)} />
+
+      {/* Etapa 2 — refeições do dia (macros distribuídos) */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <Apple size={15} color={C.pink} />
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Refeições do dia típico</span>
+      </div>
+      <div className="flex flex-col gap-2.5 mb-5">
+        {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} />)}
+      </div>
 
       <div className="rounded-2xl p-3.5 mb-2 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
         <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
@@ -2116,6 +2125,7 @@ function perfilPadrao(weight) {
     idade: "", alturaCm: "",
     percentualGordura: "", massaLivreGordura: "",
     objetivo: "performance", cenario: "rotina", jogo: "nenhum",
+    ajusteControle: AJUSTE_FAIXA.inicio, // superávit/déficit (500–1000), ajustável
     acorda: "07:00", dorme: "23:00", escolaInicio: "", escolaFim: "",
     treinos: [{ tipo: "musculacao", inicio: "16:00", duracaoMin: "60" }],
   };
@@ -2211,6 +2221,39 @@ function ResumoNutricional({ metas, perfil, onEdit }) {
   );
 }
 
+/* Card de uma refeição (Etapa 2 — macros distribuídos). A estrutura
+   BASE/COMPLEMENTO/ACESSÓRIO e a equivalência de alimentos vêm nas etapas 3/4. */
+function RefeicaoCard({ r }) {
+  const C = useC();
+  const rec = r.tier === "recomendado";
+  const macro = (label, val, color) => (
+    <div className="flex-1 text-center rounded-lg py-1.5" style={{ background: C.surface2 }}>
+      <p className="text-sm font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color }}>{val}<span className="text-[9px]" style={{ color: C.muted }}>g</span></p>
+      <p className="text-[9px] font-bold uppercase mt-0.5" style={{ color: C.muted }}>{label}</p>
+    </div>
+  );
+  return (
+    <div className="rounded-3xl p-4" style={{ background: C.surface, border: `1px solid ${r.imediatoPre ? AMBER : C.line}` }}>
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-xs font-bold shrink-0" style={{ color: C.pink, fontFamily: "'Barlow Condensed', sans-serif" }}>{r.hora}</span>
+          <span className="font-bold text-base truncate" style={{ color: C.text }}>{r.label}</span>
+        </div>
+        <span className="shrink-0" style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", padding: "3px 8px", borderRadius: 999, color: rec ? AMBER : "#fff", background: rec ? "transparent" : C.pink, border: `1px solid ${rec ? AMBER : C.pink}`, fontFamily: "'Barlow Condensed', sans-serif" }}>
+          {rec ? "Recomendado" : "Essencial"}
+        </span>
+      </div>
+      {r.nota && <p className="text-[11px] leading-snug mb-2.5" style={{ color: r.imediatoPre ? AMBER : C.muted }}>{r.nota}</p>}
+      <div className="flex gap-2">
+        {macro("Carbo", r.cho, C.pink)}
+        {macro("Proteína", r.ptn, "#22C55E")}
+        {macro("Gordura", r.lip, AMBER)}
+      </div>
+      {r.ptnCapped && <p className="text-[10px] mt-1.5" style={{ color: C.muted }}>Proteína limitada ao teto de síntese ({r.ptn}g) — acima disso não adianta.</p>}
+    </div>
+  );
+}
+
 /* Questionário CFGA — salvo no localStorage, reeditável. */
 function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
   const C = useC();
@@ -2261,6 +2304,20 @@ function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
           ))}
         </div>
       </Field>
+      {(d.objetivo === "massa" || d.objetivo === "perda_gordura") && (
+        <Field label={`${d.objetivo === "massa" ? "Superávit" : "Déficit"} calórico: ${d.ajusteControle || AJUSTE_FAIXA.inicio} kcal/dia`}>
+          <input
+            type="range" min={AJUSTE_FAIXA.min} max={AJUSTE_FAIXA.max} step={AJUSTE_FAIXA.passo}
+            value={d.ajusteControle || AJUSTE_FAIXA.inicio}
+            onChange={(e) => set({ ajusteControle: Number(e.target.value) })}
+            className="w-full" style={{ accentColor: C.pink }}
+          />
+          <div className="flex justify-between text-[10px]" style={{ color: C.muted }}>
+            <span>{AJUSTE_FAIXA.min}</span><span>{AJUSTE_FAIXA.max}</span>
+          </div>
+          <p className="text-[10px]" style={{ color: C.muted }}>O curso define esse ajuste pela avaliação individual (faixa 500–1000). Padrão: começar em 500.</p>
+        </Field>
+      )}
       <Field label="Cenário atual">
         <div className="flex flex-wrap gap-2">
           {CENARIOS.map((c) => (
