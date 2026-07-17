@@ -323,7 +323,28 @@ const DUR_REFEICAO = { cafe: 60, almoco: 60, jantar: 60, lanche_manha: 20, lanch
 /* pré imediata, mantém LEVE (janela 30–15 min = só 30–60g de CHO).          */
 const COLADO_MIN = 45;
 
-/* §12.1 — decide as refeições do dia e atribui pesos de macro por timing. */
+/* Junta treinos colados num BLOCO contínuo: se o próximo começa a menos de
+ * COLADO_MIN do fim do atual, é o mesmo bloco (ex: musculação 15–16 + futebol
+ * 16–17:30 = bloco 15:00→17:30). Um bloco tem 1 pré, intra durante, 1 pós. */
+function construirBlocos(treinos) {
+  const blocos = [];
+  for (const t of treinos) {
+    const last = blocos[blocos.length - 1];
+    if (last && t.ini - last.fim < COLADO_MIN) {
+      last.fim = Math.max(last.fim, t.fim);
+      last.dur = last.fim - last.ini;
+      last.sessoes.push(t);
+      if (t.tipo === "futebol") last.temFutebol = true;
+    } else {
+      blocos.push({ ini: t.ini, fim: t.fim, dur: t.dur, sessoes: [t], temFutebol: t.tipo === "futebol" });
+    }
+  }
+  blocos.forEach((b) => { b.duplo = b.sessoes.length > 1; });
+  return blocos;
+}
+const overlaps = (aIni, aFim, bIni, bFim) => aIni < bFim && bIni < aFim;
+
+/* §12.1 — decide as refeições do dia (raciocinando por BLOCOS de treino). */
 export function decidirRefeicoes(perfil) {
   const wake = hm2min(perfil.acorda) ?? 7 * 60;
   const sleep = hm2min(perfil.dorme) ?? 23 * 60;
@@ -335,6 +356,8 @@ export function decidirRefeicoes(perfil) {
     .filter((t) => t.inicio && num(t.duracaoMin) > 0)
     .map((t) => ({ tipo: t.tipo, ini: hm2min(t.inicio), dur: num(t.duracaoMin), fim: hm2min(t.inicio) + num(t.duracaoMin) }))
     .sort((a, b) => a.ini - b.ini);
+  const blocos = construirBlocos(treinos);
+  const NORMAIS = ["cafe", "almoco", "jantar", "lanche_manha", "lanche_tarde"];
 
   const meals = [];
   const add = (m) => meals.push({ dur: DUR_REFEICAO[m.key.replace(/_\d+$/, "")] ?? 20, ...m });
@@ -345,7 +368,7 @@ export function decidirRefeicoes(perfil) {
   const tAlmoco = escFim != null ? escFim + 15 : 12 * 60 + 30; // após a escola, se houver
   add({ key: "almoco", label: "Almoço", tier: "essencial", time: tAlmoco });
   let tJantar = 19 * 60;
-  if (treinos.length) tJantar = Math.max(tJantar, treinos[treinos.length - 1].fim + 90);
+  if (blocos.length) tJantar = Math.max(tJantar, blocos[blocos.length - 1].fim + 90); // sempre depois do último bloco
   tJantar = Math.min(tJantar, sleep - 90);
   add({ key: "jantar", label: "Jantar", tier: "essencial", time: tJantar });
 
@@ -364,50 +387,72 @@ export function decidirRefeicoes(perfil) {
     add({ key: "lanche_tarde", label: "Lanche da tarde", tier: "recomendado", nota: "Intervalo maior que 4h entre almoço e jantar.", time: tAlmoco + Math.round((tJantar - tAlmoco) / 2) });
   }
 
-  // Refeições ligadas ao treino
-  treinos.forEach((t, i) => {
-    // Já existe uma refeição principal terminando < 45 min antes → ela É a pré (leve).
-    const preExistente = meals.find((m) => ["cafe", "almoco", "jantar", "lanche_manha", "lanche_tarde"].includes(m.key) && t.ini - (m.time + m.dur) >= 0 && t.ini - (m.time + m.dur) < COLADO_MIN);
-    if (preExistente) {
-      preExistente.imediatoPre = true;
-      preExistente.nota = (preExistente.nota ? preExistente.nota + " " : "") + (diaJogo
+  // Refeições ligadas ao treino — UMA por bloco (pré / intra / pós)
+  blocos.forEach((bl, i) => {
+    // Refeição principal mais próxima que termina ANTES do bloco (janela pré).
+    const antes = meals
+      .filter((m) => NORMAIS.includes(m.key) && m.time + m.dur <= bl.ini)
+      .sort((a, b) => (b.time + b.dur) - (a.time + a.dur));
+    const prox = antes[0];
+    const gap = prox ? bl.ini - (prox.time + prox.dur) : Infinity;
+
+    // §3.2: só é "pré pesado" a refeição 1–2h antes (60–120 min). Menos de 1h
+    // antes cai na janela leve (30–15 min = 30–60g) → mantém LEVE.
+    if (prox && gap < 60) {
+      // Colada (< 1h antes): ela É a pré imediata → LEVE, sem pré separado.
+      prox.imediatoPre = true;
+      prox.nota = (prox.nota ? prox.nota + " " : "") + (diaJogo
         ? "Colada no jogo: NÃO INVENTAR — só use o que já testou. Leve e de fácil digestão."
         : "Colada no treino: mantenha LEVE e de fácil digestão (30–60g de CHO). A carga pesada de carbo vai nas refeições anteriores.");
+    } else if (prox && gap <= 120) {
+      // 1–2h antes: essa refeição principal É o pré → carrega o carbo nela, sem duplicar.
+      prox.preMain = true;
+      prox.nota = (prox.nota ? prox.nota + " " : "") + (diaJogo
+        ? "Esta é sua refeição pré-jogo — só use o que já testou."
+        : "Esta é sua refeição pré-treino (1–2h antes) — carregue o carboidrato aqui.");
     } else {
+      // Nenhuma refeição na janela → cria um pré-treino dedicado ~1h antes.
       add({
         key: `pre_${i}`, label: "Pré-treino", tier: "essencial", preTreino: true,
         nota: diaJogo ? "Pré-jogo: NÃO INVENTAR — só use o que já testou." : "Pré-treino 1–2h antes: 1–2 g/kg de CHO (ou 30–60g se for 30–15 min antes).",
-        time: t.ini - 60,
+        time: bl.ini - 60,
       });
     }
-    // INTRA: só se duração > 60 min (§3.3, regra de ouro)
-    if (t.dur > 60) {
-      const faixa = t.dur <= 150 ? "30–60g de CHO" : "até 90g de CHO";
-      add({ key: `intra_${i}`, label: "Intra-treino", tier: "essencial", intra: true, nota: `Treino de ${t.dur} min: ${faixa} durante (isotônico/gel/maltodextrina).`, time: t.ini + Math.round(t.dur / 2) });
-    } else if (i === 0) {
-      // ≤ 60 min: bochecho de CHO como curiosidade (não vira refeição).
+
+    // INTRA: só se o BLOCO passar de 60 min (§3.3). Um por bloco, no meio.
+    if (bl.dur > 60) {
+      const faixa = bl.dur <= 150 ? "30–60g de CHO" : "até 90g de CHO";
+      add({ key: `intra_${i}`, label: "Intra-treino", tier: "essencial", intra: true, nota: `Bloco de ${bl.dur} min: ${faixa} durante (isotônico/gel/maltodextrina).`, time: bl.ini + Math.round(bl.dur / 2) });
     }
-    // PÓS: até 60 min. Protocolo acelerado se 2 sessões coladas (< 2h).
-    const prox = treinos[i + 1];
-    const back2back = prox && prox.ini - t.fim < 120;
-    if (back2back) {
-      add({ key: `pos_${i}`, label: "Pós-treino (acelerado)", tier: "essencial", posTreino: true, acelerado: true, nota: "Duas sessões coladas: protocolo acelerado — 1–1,2 g/kg de CHO + 20–30g de PTN nos primeiros 30–60 min.", time: t.fim + 20 });
+
+    // PÓS: UM só, depois do FIM do bloco. Protocolo acelerado se bloco duplo (§3.5).
+    if (bl.duplo) {
+      add({ key: `pos_${i}`, label: "Pós-treino (acelerado)", tier: "essencial", posTreino: true, acelerado: true, nota: "Duas sessões coladas: protocolo acelerado — 1–1,2 g/kg de CHO + 20–30g de PTN nos primeiros 30–60 min.", time: bl.fim + 20 });
     } else {
-      add({ key: `pos_${i}`, label: "Pós-treino", tier: "essencial", posTreino: true, nota: "Pós-treino (até 60 min): ~1 g/kg de CHO por hora + proteína pra repor glicogênio.", time: t.fim + 30 });
+      add({ key: `pos_${i}`, label: "Pós-treino", tier: "essencial", posTreino: true, nota: "Pós-treino (até 60 min): ~1 g/kg de CHO por hora + proteína pra repor glicogênio.", time: bl.fim + 30 });
     }
   });
 
   // CEIA / pré-sono: SEMPRE recomendar (§2.5 "4 refeições + 1 pré-sono")
   add({ key: "ceia", label: "Ceia / pré-sono", tier: "recomendado", ceia: true, nota: "Pré-sono ajuda a compensar insuficiências nutricionais do dia. Proteína de absorção LENTA (leite/caseína), não whey com água.", time: sleep - 45 });
 
-  meals.sort((a, b) => a.time - b.time);
-  atribuirPesosMacro(meals, treinos);
-  return meals.map((m) => ({ ...m, hora: min2hm(m.time) }));
+  // Nenhuma refeição NORMAL pode cair dentro de uma janela de treino — só
+  // pré/intra/pós tocam o treino. Remove lanches que colidem com um bloco.
+  const semColisao = meals.filter((m) => {
+    if (!["lanche_manha", "lanche_tarde"].includes(m.key)) return true;
+    return !blocos.some((bl) => overlaps(m.time, m.time + m.dur, bl.ini, bl.fim));
+  });
+
+  // Ordena por horário. A sequência pré < intra < pós fica garantida pelos
+  // tempos do bloco (pré antes de ini, intra no meio, pós depois do fim).
+  semColisao.sort((a, b) => a.time - b.time);
+  atribuirPesosMacro(semColisao, blocos);
+  return semColisao.map((m) => ({ ...m, hora: min2hm(m.time) }));
 }
 
-/* Pesos de macro por refeição — CHO puxa pra perto do treino, exceto a
- * refeição colada (essa fica leve). §3.2 / §3.4. */
-function atribuirPesosMacro(meals, treinos) {
+/* Pesos de macro por refeição — CHO puxa pras refeições ANTES do bloco,
+ * exceto a colada (essa fica leve). Raciocina por bloco. §3.2 / §3.4. */
+function atribuirPesosMacro(meals, blocos) {
   meals.forEach((m) => {
     let carbW = 1.0, protW = 1.0, fatW = 1.0;
     if (m.intra) { carbW = 1.4; protW = 0.2; fatW = 0.0; }
@@ -415,9 +460,9 @@ function atribuirPesosMacro(meals, treinos) {
     else if (m.ceia) { carbW = 0.6; protW = 1.0; fatW = 1.0; }
     else {
       const mEnd = m.time + m.dur;
-      const treinoDepois = treinos.find((t) => t.ini >= mEnd); // treino após esta refeição
-      if (treinoDepois) {
-        const gap = treinoDepois.ini - mEnd;
+      const blocoDepois = blocos.find((b) => b.ini >= mEnd); // bloco após esta refeição
+      if (blocoDepois) {
+        const gap = blocoDepois.ini - mEnd;
         if (m.imediatoPre || gap < COLADO_MIN) { carbW = 0.6; protW = 0.8; fatW = 0.3; } // colada → LEVE
         else { carbW = 1.4; protW = 1.0; fatW = 0.8; } // antes do treino → puxa carbo
       } else { carbW = 1.0; protW = 1.0; fatW = 1.0; } // sem treino depois (ex: jantar pós-treino)
