@@ -422,7 +422,7 @@ export function decidirRefeicoes(perfil) {
     // INTRA: só se o BLOCO passar de 60 min (§3.3). Um por bloco, no meio.
     if (bl.dur > 60) {
       const faixa = bl.dur <= 150 ? "30–60g de CHO" : "até 90g de CHO";
-      add({ key: `intra_${i}`, label: "Intra-treino", tier: "essencial", intra: true, nota: `Bloco de ${bl.dur} min: ${faixa} durante (isotônico/gel/maltodextrina).`, time: bl.ini + Math.round(bl.dur / 2) });
+      add({ key: `intra_${i}`, label: "Intra-treino", tier: "essencial", intra: true, doseCho: faixa, nota: `Bloco de ${bl.dur} min: ${faixa} durante (isotônico/gel/maltodextrina).`, time: bl.ini + Math.round(bl.dur / 2) });
     }
 
     // PÓS: UM só, depois do FIM do bloco. Protocolo acelerado se bloco duplo (§3.5).
@@ -474,11 +474,13 @@ function atribuirPesosMacro(meals, blocos) {
 
 /* Distribui os macros diários entre as refeições pelos pesos.
  * DECISÃO NOSSA: como o curso dá FAIXAS, uso o MEIO da faixa como alvo-ponto
- * para distribuir (o valor exato é individualizável). Proteína por refeição
- * é limitada ao teto de síntese (§2.5): min(0,3×peso ; 35g). */
+ * para CHO e LIP (o valor exato é individualizável). PROTEÍNA vai pra parte
+ * ALTA da faixa (não o meio) — o curso quer proteína alta pra proteger massa
+ * muscular, especialmente em lesão (2–3 g/kg) e perda de gordura (1,6–2,5).
+ * Proteína por refeição é limitada ao teto de síntese (§2.5): min(0,3×peso;35g). */
 export function distribuirMacros(metas, refeicoes) {
   const choAlvo = round((metas.cho[0] + metas.cho[1]) / 2);
-  const ptnAlvo = round((metas.ptn[0] + metas.ptn[1]) / 2);
+  const ptnAlvo = round(metas.ptn[1]); // parte ALTA da faixa (decisão nossa)
   const lipAlvo = round((metas.lip[0] + metas.lip[1]) / 2);
   const sumC = refeicoes.reduce((a, m) => a + m.carbW, 0) || 1;
   const sumP = refeicoes.reduce((a, m) => a + m.protW, 0) || 1;
@@ -492,6 +494,52 @@ export function distribuirMacros(metas, refeicoes) {
     const lip = round(lipAlvo * (m.fatW / sumF));
     return { ...m, cho, ptn, lip, ptnCapped };
   });
+}
+
+/* ==================================================================
+ *  ETAPA 3 — Estrutura BASE / COMPLEMENTO / ACESSÓRIO por refeição (§12.2)
+ *  Cada refeição vira 3 categorias, MAS com bom senso por tipo:
+ *   - INTRA: sem prato — só a fonte de carbo líquido/rápido.
+ *   - PRÉ dedicado: carbo de fácil digestão (BASE), sem complemento.
+ *   - PÓS: carbo rápido + proteína (BASE), sem complemento pesado.
+ *   - CEIA: proteína LENTA (leite/caseína), não whey com água.
+ *   - Normal (café/almoço/jantar/lanche): BASE + COMPLEMENTO + ACESSÓRIO.
+ *  Retorna { intra? , linha? , rows: [{cat, macro, grams, sufixo} | {cat, texto}] }.
+ *  (Etapa 4 vai tornar as rows com `macro`+`grams` clicáveis.)
+ * ================================================================== */
+export function estruturarRefeicao(r) {
+  if (r.intra) {
+    return { intra: true, linha: `${r.doseCho || `${r.cho}g de CHO`} — líquido de rápida absorção`, fontes: "isotônico, gel de carbo ou maltodextrina" };
+  }
+  const rows = [];
+  const M = (cat, macro, grams, sufixo) => rows.push({ cat, macro, grams, sufixo });
+  const T = (cat, texto) => rows.push({ cat, texto });
+
+  if (r.posTreino) {
+    // Majoritariamente carbo rápido + proteína; sem complemento pesado.
+    if (r.cho > 0) M("base", "cho", r.cho, "de carboidrato de rápida absorção");
+    if (r.ptn > 0) M("base", "ptn", r.ptn, "de proteína");
+    return { rows, aviso: r.acelerado ? "Consumir nos primeiros 30–60 min após o treino." : null };
+  }
+  if (r.preTreino) {
+    // Pré dedicado (leve): carbo de fácil digestão; sem complemento.
+    if (r.cho > 0) M("base", "cho", r.cho, "de carboidrato de fácil digestão");
+    if (r.lip > 2) M("acessorio", "lip", r.lip, "de gordura boa (moderar — não pesar a digestão)");
+    return { rows };
+  }
+  if (r.ceia) {
+    // Proteína LENTA (leite/caseína), não whey com água.
+    if (r.ptn > 0) M("base", "ptn", r.ptn, "de proteína LENTA (leite/caseína — não whey com água)");
+    if (r.cho > 0) M("base", "cho", r.cho, "de carboidrato");
+    if (r.lip > 0) M("acessorio", "lip", r.lip, "de gordura boa (castanhas, pasta de amendoim)");
+    return { rows };
+  }
+  // Normal (café / almoço / jantar / lanche) — prato completo.
+  if (r.cho > 0) M("base", "cho", r.cho, "de carboidrato (arroz, batata, pão, aveia…)");
+  if (r.ptn > 0) M("base", "ptn", r.ptn, "de proteína (frango, carne, ovo, peixe…)");
+  T("complemento", "Legumes, verduras e frutas — micronutrientes (não pule: falta deles é um dos maiores erros do curso)");
+  if (r.lip > 0) M("acessorio", "lip", r.lip, "de gordura boa (azeite, castanhas, pasta de amendoim)");
+  return { rows };
 }
 
 /* Plano completo: metas diárias + refeições com macros distribuídos. */

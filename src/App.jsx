@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import {
   OBJETIVOS, objetivoInfo, CENARIOS, cenarioInfo, JOGO_CONTEXTO, TIPOS_TREINO,
-  montarPlano, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
+  montarPlano, estruturarRefeicao, CATEGORIAS_REFEICAO, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
 } from "./data/nutricao";
 
 /* ------------------------------------------------------------------ */
@@ -2221,17 +2221,23 @@ function ResumoNutricional({ metas, perfil, onEdit }) {
   );
 }
 
-/* Card de uma refeição (Etapa 2 — macros distribuídos). A estrutura
-   BASE/COMPLEMENTO/ACESSÓRIO e a equivalência de alimentos vêm nas etapas 3/4. */
+/* Badge de categoria BASE / COMPLEMENTO / ACESSÓRIO (padrão TypeBadge). */
+function CatBadgeCFGA({ cat }) {
+  const info = CATEGORIAS_REFEICAO[cat];
+  if (!info) return null;
+  return (
+    <span style={{ display: "inline-block", fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 6, color: "#fff", background: info.color, fontFamily: "'Barlow Condensed', sans-serif", whiteSpace: "nowrap" }}>
+      {info.label}
+    </span>
+  );
+}
+
+/* Card de refeição — Etapa 3: estrutura BASE / COMPLEMENTO / ACESSÓRIO.
+   (Etapa 4 tornará os valores de macro clicáveis pra ver equivalências.) */
 function RefeicaoCard({ r }) {
   const C = useC();
   const rec = r.tier === "recomendado";
-  const macro = (label, val, color) => (
-    <div className="flex-1 text-center rounded-lg py-1.5" style={{ background: C.surface2 }}>
-      <p className="text-sm font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", color }}>{val}<span className="text-[9px]" style={{ color: C.muted }}>g</span></p>
-      <p className="text-[9px] font-bold uppercase mt-0.5" style={{ color: C.muted }}>{label}</p>
-    </div>
-  );
+  const est = estruturarRefeicao(r);
   return (
     <div className="rounded-3xl p-4" style={{ background: C.surface, border: `1px solid ${r.imediatoPre ? AMBER : C.line}` }}>
       <div className="flex items-center justify-between mb-1.5 gap-2">
@@ -2244,12 +2250,32 @@ function RefeicaoCard({ r }) {
         </span>
       </div>
       {r.nota && <p className="text-[11px] leading-snug mb-2.5" style={{ color: r.imediatoPre ? AMBER : C.muted }}>{r.nota}</p>}
-      <div className="flex gap-2">
-        {macro("Carbo", r.cho, C.pink)}
-        {macro("Proteína", r.ptn, "#22C55E")}
-        {macro("Gordura", r.lip, AMBER)}
-      </div>
-      {r.ptnCapped && <p className="text-[10px] mt-1.5" style={{ color: C.muted }}>Proteína limitada ao teto de síntese ({r.ptn}g) — acima disso não adianta.</p>}
+
+      {est.intra ? (
+        /* Intra-treino: sem estrutura de prato — só o carbo líquido. */
+        <div className="rounded-xl p-3 flex items-start gap-2" style={{ background: C.surface2 }}>
+          <Droplet size={15} color={WATER_BLUE} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold" style={{ color: C.text }}>{est.linha}</p>
+            <p className="text-[11px]" style={{ color: C.muted }}>{est.fontes}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {est.rows.map((row, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <div className="shrink-0 mt-0.5"><CatBadgeCFGA cat={row.cat} /></div>
+              <p className="text-[13px] leading-snug" style={{ color: C.text }}>
+                {row.macro ? (
+                  <><b style={{ color: row.macro === "cho" ? C.pink : row.macro === "ptn" ? "#22C55E" : AMBER, fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15 }}>{row.grams}g</b> {row.sufixo}</>
+                ) : row.texto}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      {est.aviso && <p className="text-[11px] mt-2" style={{ color: AMBER }}>{est.aviso}</p>}
+      {r.ptnCapped && <p className="text-[10px] mt-1.5" style={{ color: C.muted }}>Proteína no teto de síntese ({r.ptn}g) — acima disso não adianta.</p>}
     </div>
   );
 }
