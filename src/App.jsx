@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import {
   OBJETIVOS, objetivoInfo, CENARIOS, cenarioInfo, JOGO_CONTEXTO, TIPOS_TREINO,
-  montarPlano, estruturarRefeicao, CATEGORIAS_REFEICAO, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
+  montarPlano, estruturarRefeicao, opcoesEquivalencia, CATEGORIAS_REFEICAO, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
 } from "./data/nutricao";
 
 /* ------------------------------------------------------------------ */
@@ -1982,6 +1982,8 @@ function NutricaoView({ hydration, weight, onAddHydration, onDeleteHydration, on
 function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
   const C = useC();
   const [editando, setEditando] = useState(false);
+  // Etapa 4 — equivalência: {macro, grams, refeicaoTipo} do valor clicado.
+  const [equiv, setEquiv] = useState(null);
 
   // Plano completo (metas + refeições distribuídas) para o "dia típico".
   const plano = useMemo(() => (perfil ? montarPlano(perfil) : null), [perfil]);
@@ -2023,7 +2025,7 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
         <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Refeições do dia típico</span>
       </div>
       <div className="flex flex-col gap-2.5 mb-5">
-        {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} />)}
+        {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} onPickMacro={(macro, grams) => setEquiv({ macro, grams, refeicaoTipo: tipoRefeicao(r) })} />)}
       </div>
 
       <div className="rounded-2xl p-3.5 mb-2 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
@@ -2039,8 +2041,26 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
           onSave={(p) => { onSave(p); setEditando(false); }}
         />
       )}
+
+      {equiv && (
+        <EquivalenciaModal
+          macro={equiv.macro}
+          grams={equiv.grams}
+          ctx={{ cenario: perfil.cenario, jogo: perfil.jogo, refeicaoTipo: equiv.refeicaoTipo }}
+          onClose={() => setEquiv(null)}
+        />
+      )}
     </div>
   );
+}
+
+/* Mapeia o objeto refeição → tipo usado no filtro de equivalência (Etapa 4). */
+function tipoRefeicao(r) {
+  if (r.intra) return "intra";
+  if (r.posTreino) return "posTreino";
+  if (r.preTreino) return "preTreino";
+  if (r.ceia) return "ceia";
+  return "normal";
 }
 
 /* Perfil vazio inicial (peso pré-preenchido se já houver na hidratação). */
@@ -2160,7 +2180,7 @@ function CatBadge({ cat }) {
 
 /* Card de refeição — Etapa 3: estrutura BASE / COMPLEMENTO / ACESSÓRIO.
    (Etapa 4 tornará os valores de macro clicáveis pra ver equivalências.) */
-function RefeicaoCard({ r }) {
+function RefeicaoCard({ r, onPickMacro }) {
   const C = useC();
   const rec = r.tier === "recomendado";
   const est = estruturarRefeicao(r);
@@ -2193,7 +2213,18 @@ function RefeicaoCard({ r }) {
               <div className="shrink-0 mt-0.5"><CatBadge cat={row.cat} /></div>
               <p className="text-[13px] leading-snug" style={{ color: C.text }}>
                 {row.macro ? (
-                  <><b style={{ color: row.macro === "cho" ? C.pink : row.macro === "ptn" ? "#22C55E" : AMBER, fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15 }}>{row.grams}g</b> {row.sufixo}</>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onPickMacro && onPickMacro(row.macro, row.grams)}
+                      className="inline-flex items-baseline gap-0.5 rounded-md px-1 -mx-1 active:opacity-70"
+                      style={{ color: row.macro === "cho" ? C.pink : row.macro === "ptn" ? "#22C55E" : AMBER, background: "transparent", border: "none", cursor: "pointer" }}
+                      title="Ver equivalências de alimentos"
+                    >
+                      <b style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, borderBottom: `1px dashed currentColor` }}>{row.grams}g</b>
+                    </button>{" "}
+                    {row.sufixo}
+                  </>
                 ) : row.texto}
               </p>
             </div>
@@ -2203,6 +2234,59 @@ function RefeicaoCard({ r }) {
       {est.aviso && <p className="text-[11px] mt-2" style={{ color: AMBER }}>{est.aviso}</p>}
       {r.ptnCapped && <p className="text-[10px] mt-1.5" style={{ color: C.muted }}>Proteína no teto de síntese ({r.ptn}g) — acima disso não adianta.</p>}
     </div>
+  );
+}
+
+/* Etapa 4 — modal de equivalências: mostra quanto de cada alimento
+   bate a meta do macro clicado, filtrado pelo cenário/jogo/refeição. */
+function EquivalenciaModal({ macro, grams, ctx, onClose }) {
+  const C = useC();
+  const cor = macro === "cho" ? C.pink : macro === "ptn" ? "#22C55E" : AMBER;
+  const { titulo, opcoes, avisos } = useMemo(() => opcoesEquivalencia(macro, grams, ctx), [macro, grams, ctx]);
+  const tagInfo = {
+    volume: { texto: "volume alto", cor: AMBER },
+    gorduroso: { texto: "gordura — evitar no dia do jogo", cor: AMBER },
+  };
+  return (
+    <Modal onClose={onClose} title={titulo}>
+      <p className="text-[13px] mb-3" style={{ color: C.muted }}>
+        Escolha <b style={{ color: C.text }}>uma</b> opção — a quantidade já bate a meta de{" "}
+        <b style={{ color: cor }}>{macro === "cho" ? "carboidrato" : macro === "ptn" ? "proteína" : "gordura"}</b> desta refeição.
+      </p>
+
+      {avisos.map((a, i) => (
+        <div key={i} className="rounded-xl p-3 mb-3 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${AMBER}` }}>
+          <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
+          <p className="text-[12px] leading-snug font-bold" style={{ color: AMBER }}>{a}</p>
+        </div>
+      ))}
+
+      <div className="flex flex-col gap-2">
+        {opcoes.map((o) => (
+          <div key={o.key} className="rounded-2xl px-3.5 py-3 flex items-center justify-between gap-3" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate" style={{ color: C.text }}>{o.label}</p>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                {o.unidade && <span className="text-[11px]" style={{ color: C.muted }}>≈ {o.unidade}</span>}
+                {o.obs && <span className="text-[11px] font-bold" style={{ color: AMBER }}>· {o.obs}</span>}
+                {o.tags.map((t) => (
+                  <span key={t} style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 6, color: tagInfo[t]?.cor || C.muted, border: `1px solid ${tagInfo[t]?.cor || C.line}`, fontFamily: "'Barlow Condensed', sans-serif" }}>
+                    {tagInfo[t]?.texto || t}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <span className="shrink-0 font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, color: cor }}>
+              {o.grams}<span className="text-xs" style={{ color: C.muted }}> g</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[10px] leading-snug mt-3" style={{ color: C.muted }}>
+        Quantidades calculadas pela tabela CFGA (§12.5): gramas = (meta ÷ macro por 100g) × 100. Valores práticos, arredondados.
+      </p>
+    </Modal>
   );
 }
 

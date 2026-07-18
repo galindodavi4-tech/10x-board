@@ -155,7 +155,8 @@ export const ALIMENTOS = [
   { key: "carne_suina", label: "Carne suína magra", cat: "proteina", cho: 0, ptn: 27, lip: 7.0, kcal: 175, barato: true },
   { key: "atum", label: "Atum (lata, água)", cat: "proteina", cho: 0, ptn: 26, lip: 1.0, kcal: 116, antiInflam: true },
   { key: "sardinha", label: "Sardinha (lata)", cat: "proteina", cho: 0, ptn: 25, lip: 11, kcal: 200, antiInflam: true },
-  { key: "ovo", label: "Ovo (1 un ≈ 50g)", cat: "proteina", cho: 0.6, ptn: 6.3, lip: 5.3, kcal: 72, barato: true },
+  // Ovo: tabela por 100g (§12.5). unidadeG = peso de 1 unidade p/ exibir "≈ N ovos" (§8.1: 4–5 ovos ≈ 28g PTN).
+  { key: "ovo", label: "Ovo", cat: "proteina", cho: 1.2, ptn: 12.6, lip: 10.6, kcal: 144, barato: true, unidadeG: 50, unidadeNome: "ovo", unidadeNomePl: "ovos" },
   { key: "leite_integral", label: "Leite integral", cat: "proteina", cho: 4.8, ptn: 3.2, lip: 3.3, kcal: 61, barato: true },
   { key: "leite_po", label: "Leite em pó", cat: "proteina", cho: 38, ptn: 26, lip: 26, kcal: 496 },
   { key: "iogurte", label: "Iogurte natural", cat: "proteina", cho: 4.7, ptn: 3.5, lip: 3.3, kcal: 61 },
@@ -305,6 +306,79 @@ export function calcularMetas(perfil, treinos) {
 export function gramasAlimento(macroAlvoG, macroPor100g) {
   if (!macroPor100g) return null;
   return round((macroAlvoG / macroPor100g) * 100);
+}
+
+/* ==================================================================
+ *  ETAPA 4 — SISTEMA DE EQUIVALÊNCIA DE ALIMENTOS (§12.4 + §8.1)
+ *  Dado um macro-alvo (g) e o contexto (cenário / jogo / tipo de
+ *  refeição), devolve 4–6 opções de alimento com a quantidade que
+ *  bate a meta. Fórmula (§12.4):
+ *      gramas_alimento = (macro_alvo_g / macro_por_100g) × 100
+ *  DECISÃO NOSSA (documentada): arredondamos ao INTEIRO, não a
+ *  múltiplos de 5. Motivo: os números oficiais de §8.1 (frango 88g,
+ *  carne/atum 108g, muçarela 127g p/ 28g de PTN) só batem exatos se
+ *  arredondar ao inteiro — o próprio doc os cita fora da grade de 5.
+ * ================================================================== */
+
+/* Pools de FONTE por macro, já em ordem "mais comum/prático primeiro". */
+const POOL_EQUIV = {
+  cho: ["arroz", "macarrao", "batata_doce", "batata_inglesa", "pao_frances", "banana", "tapioca", "cuscuz", "aveia", "mandioca", "inhame", "feijao", "maltodextrina"],
+  ptn: ["frango", "ovo", "carne_bovina", "carne_suina", "atum", "sardinha", "leite_integral", "iogurte", "mucarela", "whey", "leite_po"],
+  lip: ["azeite", "abacate", "pasta_amendoim", "amendoim", "castanha_para"],
+};
+/* §7 proteína LENTA para pré-sono/ceia (leite/caseína, iogurte, ovo, queijo). */
+const PTN_LENTA = new Set(["leite_integral", "leite_po", "iogurte", "ovo", "mucarela"]);
+const MACRO_LABEL = { cho: "carboidrato", ptn: "proteína", lip: "gordura" };
+
+/* Arredondamento prático — inteiro (ver nota do bloco acima).
+   Abaixo de 10g arredonda a 0,5g pra não zerar gorduras/temperos. */
+function arredondarPratico(g) {
+  return g < 10 ? Math.round(g * 2) / 2 : Math.round(g);
+}
+
+/* macro: "cho"|"ptn"|"lip"; gramsAlvo: meta em g; ctx: {cenario, jogo, refeicaoTipo}
+   refeicaoTipo ∈ "preTreino"|"posTreino"|"ceia"|"normal"|"intra"
+   Retorna { titulo, opcoes:[{key,label,cat,grams,unidade?,obs?,tags:[]}], avisos:[] } */
+export function opcoesEquivalencia(macro, gramsAlvo, ctx = {}) {
+  const { cenario, jogo, refeicaoTipo } = ctx;
+  const diaJogo = jogo === "dia_jogo";
+  const avisos = [];
+  let keys = (POOL_EQUIV[macro] || []).slice();
+
+  // --- FILTRO DURO: pré-jogo (§4.4) só carbo de fácil digestão, já testado.
+  if (macro === "cho" && refeicaoTipo === "preTreino" && diaJogo) {
+    keys = keys.filter((k) => alimentoInfo(k)?.preJogo);
+    avisos.push(ALERTAS.diaJogoNaoInventar);
+  }
+
+  // --- PRIORIZAÇÃO por score (sort estável — V8/ES2019 preserva empates).
+  const score = (f) => {
+    let s = 0;
+    if (cenario === "alojamento" && f.barato) s += 2;         // §8.4 barato/prático
+    if (cenario === "lesao" && f.antiInflam) s += 3;          // §4.6 anti-inflamatório
+    if (macro === "cho" && refeicaoTipo === "preTreino" && f.preJogo) s += 3; // fácil digestão
+    if (macro === "ptn" && refeicaoTipo === "ceia" && PTN_LENTA.has(f.key)) s += 3; // §7 caseína
+    return s;
+  };
+  keys.sort((a, b) => score(alimentoInfo(b)) - score(alimentoInfo(a)));
+
+  const opcoes = keys.map((k) => {
+    const f = alimentoInfo(k);
+    const por100 = f[macro];
+    const gExato = por100 > 0 ? (gramsAlvo / por100) * 100 : 0;
+    const o = { key: k, label: f.label, cat: f.cat, grams: arredondarPratico(gExato), tags: [] };
+    // Unidades (ovo): §8.1 ≈ 4–5 ovos p/ 28g PTN. Conta pela grama exata.
+    if (f.unidadeG) {
+      const lo = Math.floor(gExato / f.unidadeG), hi = Math.ceil(gExato / f.unidadeG);
+      o.unidade = lo === hi ? `${lo} ${lo === 1 ? f.unidadeNome : f.unidadeNomePl}` : `${lo}–${hi} ${f.unidadeNomePl}`;
+    }
+    if (o.grams >= 400) o.tags.push("volume");                 // §12.3 volume alto (ex: iogurte 800g)
+    if (k === "whey" && refeicaoTipo === "ceia") o.obs = "com LEITE, não com água"; // §7 caseína
+    if (diaJogo && refeicaoTipo === "normal" && macro !== "lip" && f.lip >= 10) o.tags.push("gorduroso"); // §4.3 dia de jogo: evitar gordura
+    return o;
+  }).slice(0, 6); // 4–6 opções, não a tabela inteira
+
+  return { titulo: `${arredondarPratico(gramsAlvo)}g de ${MACRO_LABEL[macro] || macro}`, opcoes, avisos };
 }
 
 /* ==================================================================
