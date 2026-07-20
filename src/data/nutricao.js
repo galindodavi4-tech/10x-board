@@ -134,48 +134,54 @@ export const CATEGORIAS_REFEICAO = {
 /* tags p/ filtro por cenário (etapa 4):                              */
 /*   barato (§8.4), antiInflam (§4.6), proInflam (evitar na lesão),   */
 /*   preJogo (§4.4 fácil digestão)                                    */
+/* contextos: refeições em que o alimento faz sentido (filtro por      */
+/*   horário). Acessórios (gorduras boas) = CTX_TODAS (sem restrição). */
+const CTX_TODAS = ["cafe", "lanche", "almoco", "jantar", "pre-treino", "intra-treino", "pos-treino", "ceia"];
+const CTX_PRINCIPAL = ["almoco", "jantar", "pos-treino"];   // pratos "de sal"
+const CTX_LEVE = ["cafe", "lanche", "ceia"];                // café/lanche/ceia
+const CTX_LEVE_PRE = ["cafe", "lanche", "ceia", "pre-treino"]; // + fácil digestão pré
 export const ALIMENTOS = [
   // Carboidratos
-  { key: "arroz", label: "Arroz branco cozido", cat: "carbo", cho: 28, ptn: 2.5, lip: 0.2, kcal: 128, barato: true },
-  { key: "macarrao", label: "Macarrão cozido", cat: "carbo", cho: 30, ptn: 5.0, lip: 0.9, kcal: 158, barato: true },
-  { key: "batata_doce", label: "Batata doce cozida", cat: "carbo", cho: 20, ptn: 1.6, lip: 0.1, kcal: 86, barato: true },
-  { key: "batata_inglesa", label: "Batata inglesa cozida", cat: "carbo", cho: 20, ptn: 1.9, lip: 0.1, kcal: 87, barato: true },
-  { key: "mandioca", label: "Mandioca cozida", cat: "carbo", cho: 30, ptn: 1.4, lip: 0.3, kcal: 125 },
-  { key: "inhame", label: "Inhame cozido", cat: "carbo", cho: 27, ptn: 1.5, lip: 0.2, kcal: 116 },
-  { key: "pao_frances", label: "Pão francês", cat: "carbo", cho: 58, ptn: 8.0, lip: 3.1, kcal: 300, barato: true, preJogo: true, unidade: { nome: "unidade", nomePl: "unidades", gramas: 50 } },
-  { key: "aveia", label: "Aveia (crua)", cat: "carbo", cho: 67, ptn: 14, lip: 7.0, kcal: 389, barato: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 } },
-  { key: "tapioca", label: "Tapioca (goma)", cat: "carbo", cho: 62, ptn: 0.3, lip: 0.1, kcal: 250, barato: true, preJogo: true },
-  { key: "cuscuz", label: "Cuscuz de milho cozido", cat: "carbo", cho: 25, ptn: 2.2, lip: 0.6, kcal: 113, barato: true, preJogo: true },
-  { key: "banana", label: "Banana", cat: "fruta", cho: 23, ptn: 1.1, lip: 0.3, kcal: 89, barato: true, preJogo: true, unidade: { nome: "banana", nomePl: "bananas", gramas: 100 } },
-  { key: "feijao", label: "Feijão cozido", cat: "carbo", cho: 14, ptn: 5.0, lip: 0.5, kcal: 76, barato: true },
-  { key: "maltodextrina", label: "Maltodextrina", cat: "suplemento", cho: 95, ptn: 0, lip: 0, kcal: 380, preJogo: true },
+  { key: "arroz", label: "Arroz branco cozido", cat: "carbo", cho: 28, ptn: 2.5, lip: 0.2, kcal: 128, barato: true, contextos: CTX_PRINCIPAL },
+  { key: "macarrao", label: "Macarrão cozido", cat: "carbo", cho: 30, ptn: 5.0, lip: 0.9, kcal: 158, barato: true, contextos: CTX_PRINCIPAL },
+  { key: "batata_doce", label: "Batata doce cozida", cat: "carbo", cho: 20, ptn: 1.6, lip: 0.1, kcal: 86, barato: true, contextos: CTX_PRINCIPAL },
+  { key: "batata_inglesa", label: "Batata inglesa cozida", cat: "carbo", cho: 20, ptn: 1.9, lip: 0.1, kcal: 87, barato: true, contextos: CTX_PRINCIPAL },
+  { key: "mandioca", label: "Mandioca cozida", cat: "carbo", cho: 30, ptn: 1.4, lip: 0.3, kcal: 125, contextos: CTX_PRINCIPAL },
+  { key: "inhame", label: "Inhame cozido", cat: "carbo", cho: 27, ptn: 1.5, lip: 0.2, kcal: 116, contextos: CTX_PRINCIPAL },
+  { key: "pao_frances", label: "Pão francês", cat: "carbo", cho: 58, ptn: 8.0, lip: 3.1, kcal: 300, barato: true, preJogo: true, unidade: { nome: "unidade", nomePl: "unidades", gramas: 50 }, contextos: CTX_LEVE_PRE },
+  { key: "aveia", label: "Aveia (crua)", cat: "carbo", cho: 67, ptn: 14, lip: 7.0, kcal: 389, barato: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 }, contextos: CTX_LEVE_PRE },
+  { key: "tapioca", label: "Tapioca (goma)", cat: "carbo", cho: 62, ptn: 0.3, lip: 0.1, kcal: 250, barato: true, preJogo: true, contextos: CTX_LEVE_PRE },
+  { key: "cuscuz", label: "Cuscuz de milho cozido", cat: "carbo", cho: 25, ptn: 2.2, lip: 0.6, kcal: 113, barato: true, preJogo: true, contextos: CTX_LEVE_PRE },
+  { key: "banana", label: "Banana", cat: "fruta", cho: 23, ptn: 1.1, lip: 0.3, kcal: 89, barato: true, preJogo: true, unidade: { nome: "banana", nomePl: "bananas", gramas: 100 }, contextos: CTX_LEVE_PRE },
+  { key: "feijao", label: "Feijão cozido", cat: "carbo", cho: 14, ptn: 5.0, lip: 0.5, kcal: 76, barato: true, contextos: ["almoco", "jantar"] },
+  { key: "maltodextrina", label: "Maltodextrina", cat: "suplemento", cho: 95, ptn: 0, lip: 0, kcal: 380, preJogo: true, contextos: ["pre-treino", "intra-treino", "pos-treino"] },
   // Proteínas (animal)
-  { key: "frango", label: "Peito de frango grelhado", cat: "proteina", cho: 0, ptn: 32, lip: 3.6, kcal: 165, barato: true, antiInflam: false },
-  { key: "carne_bovina", label: "Carne bovina magra", cat: "proteina", cho: 0, ptn: 26, lip: 8.0, kcal: 180 },
-  { key: "carne_suina", label: "Carne suína magra", cat: "proteina", cho: 0, ptn: 27, lip: 7.0, kcal: 175, barato: true },
-  { key: "atum", label: "Atum (lata, água)", cat: "proteina", cho: 0, ptn: 26, lip: 1.0, kcal: 116, antiInflam: true, unidade: { nome: "lata", nomePl: "latas", gramas: 120 } },
-  { key: "sardinha", label: "Sardinha (lata)", cat: "proteina", cho: 0, ptn: 25, lip: 11, kcal: 200, antiInflam: true, unidade: { nome: "lata", nomePl: "latas", gramas: 120 } },
+  { key: "frango", label: "Peito de frango grelhado", cat: "proteina", cho: 0, ptn: 32, lip: 3.6, kcal: 165, barato: true, antiInflam: false, contextos: CTX_PRINCIPAL },
+  { key: "carne_bovina", label: "Carne bovina magra", cat: "proteina", cho: 0, ptn: 26, lip: 8.0, kcal: 180, contextos: CTX_PRINCIPAL },
+  { key: "carne_suina", label: "Carne suína magra", cat: "proteina", cho: 0, ptn: 27, lip: 7.0, kcal: 175, barato: true, contextos: CTX_PRINCIPAL },
+  { key: "atum", label: "Atum (lata, água)", cat: "proteina", cho: 0, ptn: 26, lip: 1.0, kcal: 116, antiInflam: true, unidade: { nome: "lata", nomePl: "latas", gramas: 120 }, contextos: ["almoco", "jantar", "pos-treino", "lanche"] },
+  { key: "sardinha", label: "Sardinha (lata)", cat: "proteina", cho: 0, ptn: 25, lip: 11, kcal: 200, antiInflam: true, unidade: { nome: "lata", nomePl: "latas", gramas: 120 }, contextos: CTX_PRINCIPAL },
   // Ovo: tabela por 100g (§12.5). unidade p/ exibir "≈ N ovos" (§8.1: 4–5 ovos ≈ 28g PTN).
-  { key: "ovo", label: "Ovo", cat: "proteina", cho: 1.2, ptn: 12.6, lip: 10.6, kcal: 144, barato: true, unidade: { nome: "ovo", nomePl: "ovos", gramas: 50 } },
-  { key: "leite_integral", label: "Leite integral", cat: "proteina", cho: 4.8, ptn: 3.2, lip: 3.3, kcal: 61, barato: true, unidade: { nome: "copo", nomePl: "copos", gramas: 200 } },
-  { key: "leite_po", label: "Leite em pó", cat: "proteina", cho: 38, ptn: 26, lip: 26, kcal: 496, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 } },
-  { key: "iogurte", label: "Iogurte natural", cat: "proteina", cho: 4.7, ptn: 3.5, lip: 3.3, kcal: 61, unidade: { nome: "pote", nomePl: "potes", gramas: 170 } },
-  { key: "mucarela", label: "Muçarela", cat: "proteina", cho: 2.2, ptn: 22, lip: 22, kcal: 300 },
-  { key: "whey", label: "Whey protein (pó)", cat: "suplemento", cho: 8.0, ptn: 75, lip: 5.0, kcal: 380, unidade: { nome: "scoop", nomePl: "scoops", gramas: 30 } },
-  // Gorduras boas (anti-inflamatórias §4.6)
-  { key: "azeite", label: "Azeite extra virgem", cat: "gordura", cho: 0, ptn: 0, lip: 100, kcal: 884, antiInflam: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 13 } },
-  { key: "abacate", label: "Abacate", cat: "gordura", cho: 9, ptn: 2.0, lip: 15, kcal: 160, antiInflam: true },
-  { key: "castanha_para", label: "Castanha do Pará", cat: "gordura", cho: 12, ptn: 14, lip: 66, kcal: 656, antiInflam: true },
-  { key: "amendoim", label: "Amendoim", cat: "gordura", cho: 16, ptn: 26, lip: 49, kcal: 567, antiInflam: true },
-  { key: "pasta_amendoim", label: "Pasta de amendoim", cat: "gordura", cho: 20, ptn: 25, lip: 50, kcal: 588, antiInflam: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 } },
+  { key: "ovo", label: "Ovo", cat: "proteina", cho: 1.2, ptn: 12.6, lip: 10.6, kcal: 144, barato: true, unidade: { nome: "ovo", nomePl: "ovos", gramas: 50 }, contextos: CTX_LEVE },
+  { key: "leite_integral", label: "Leite integral", cat: "proteina", cho: 4.8, ptn: 3.2, lip: 3.3, kcal: 61, barato: true, unidade: { nome: "copo", nomePl: "copos", gramas: 200 }, contextos: CTX_LEVE },
+  { key: "leite_po", label: "Leite em pó", cat: "proteina", cho: 38, ptn: 26, lip: 26, kcal: 496, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 }, contextos: CTX_LEVE },
+  { key: "iogurte", label: "Iogurte natural", cat: "proteina", cho: 4.7, ptn: 3.5, lip: 3.3, kcal: 61, unidade: { nome: "pote", nomePl: "potes", gramas: 170 }, contextos: CTX_LEVE },
+  { key: "mucarela", label: "Muçarela", cat: "proteina", cho: 2.2, ptn: 22, lip: 22, kcal: 300, contextos: CTX_LEVE },
+  { key: "whey", label: "Whey protein (pó)", cat: "suplemento", cho: 8.0, ptn: 75, lip: 5.0, kcal: 380, unidade: { nome: "scoop", nomePl: "scoops", gramas: 30 }, contextos: ["pos-treino", "ceia"] },
+  // Gorduras boas (anti-inflamatórias §4.6) — ACESSÓRIO, qualquer refeição
+  { key: "azeite", label: "Azeite extra virgem", cat: "gordura", cho: 0, ptn: 0, lip: 100, kcal: 884, antiInflam: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 13 }, contextos: CTX_TODAS },
+  { key: "abacate", label: "Abacate", cat: "gordura", cho: 9, ptn: 2.0, lip: 15, kcal: 160, antiInflam: true, contextos: CTX_TODAS },
+  { key: "castanha_para", label: "Castanha do Pará", cat: "gordura", cho: 12, ptn: 14, lip: 66, kcal: 656, antiInflam: true, contextos: CTX_TODAS },
+  { key: "amendoim", label: "Amendoim", cat: "gordura", cho: 16, ptn: 26, lip: 49, kcal: 567, antiInflam: true, contextos: CTX_TODAS },
+  { key: "pasta_amendoim", label: "Pasta de amendoim", cat: "gordura", cho: 20, ptn: 25, lip: 50, kcal: 588, antiInflam: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 }, contextos: CTX_TODAS },
   // Legumes/verduras (COMPLEMENTO — micronutrientes obrigatórios §12.2)
-  { key: "brocolis", label: "Brócolis cozido", cat: "legume", cho: 7.0, ptn: 2.4, lip: 0.4, kcal: 35, barato: true, antiInflam: true },
-  { key: "cenoura", label: "Cenoura", cat: "legume", cho: 10, ptn: 0.9, lip: 0.2, kcal: 41, barato: true, antiInflam: true },
-  { key: "beterraba", label: "Beterraba", cat: "legume", cho: 10, ptn: 1.6, lip: 0.2, kcal: 43, barato: true, antiInflam: true },
-  { key: "tomate", label: "Tomate", cat: "legume", cho: 3.9, ptn: 0.9, lip: 0.2, kcal: 18, barato: true, antiInflam: true },
+  { key: "brocolis", label: "Brócolis cozido", cat: "legume", cho: 7.0, ptn: 2.4, lip: 0.4, kcal: 35, barato: true, antiInflam: true, contextos: CTX_PRINCIPAL },
+  { key: "cenoura", label: "Cenoura", cat: "legume", cho: 10, ptn: 0.9, lip: 0.2, kcal: 41, barato: true, antiInflam: true, contextos: CTX_PRINCIPAL },
+  { key: "beterraba", label: "Beterraba", cat: "legume", cho: 10, ptn: 1.6, lip: 0.2, kcal: 43, barato: true, antiInflam: true, contextos: CTX_PRINCIPAL },
+  { key: "tomate", label: "Tomate", cat: "legume", cho: 3.9, ptn: 0.9, lip: 0.2, kcal: 18, barato: true, antiInflam: true, contextos: CTX_PRINCIPAL },
   // Frutas
-  { key: "laranja", label: "Laranja", cat: "fruta", cho: 12, ptn: 0.9, lip: 0.1, kcal: 47, barato: true, antiInflam: true, unidade: { nome: "laranja", nomePl: "laranjas", gramas: 130 } },
-  { key: "maca", label: "Maçã", cat: "fruta", cho: 14, ptn: 0.3, lip: 0.2, kcal: 52, barato: true, antiInflam: true, unidade: { nome: "maçã", nomePl: "maçãs", gramas: 130 } },
+  { key: "laranja", label: "Laranja", cat: "fruta", cho: 12, ptn: 0.9, lip: 0.1, kcal: 47, barato: true, antiInflam: true, unidade: { nome: "laranja", nomePl: "laranjas", gramas: 130 }, contextos: CTX_LEVE },
+  { key: "maca", label: "Maçã", cat: "fruta", cho: 14, ptn: 0.3, lip: 0.2, kcal: 52, barato: true, antiInflam: true, unidade: { nome: "maçã", nomePl: "maçãs", gramas: 130 }, contextos: CTX_LEVE },
 ];
 export const alimentoInfo = (k) => ALIMENTOS.find((a) => a.key === k);
 
@@ -350,11 +356,12 @@ function unidadeCaseira(unidade, gExato) {
   return `${numStr} ${noun}`;
 }
 
-/* macro: "cho"|"ptn"|"lip"; gramsAlvo: meta em g; ctx: {cenario, jogo, refeicaoTipo}
+/* macro: "cho"|"ptn"|"lip"; gramsAlvo: meta em g; ctx: {cenario, jogo, refeicaoTipo, contexto}
    refeicaoTipo ∈ "preTreino"|"posTreino"|"ceia"|"normal"|"intra"
+   contexto ∈ "cafe"|"lanche"|"almoco"|"jantar"|"pre-treino"|"intra-treino"|"pos-treino"|"ceia"
    Retorna { titulo, opcoes:[{key,label,cat,grams,unidade?,obs?,tags:[]}], avisos:[] } */
 export function opcoesEquivalencia(macro, gramsAlvo, ctx = {}) {
-  const { cenario, jogo, refeicaoTipo } = ctx;
+  const { cenario, jogo, refeicaoTipo, contexto } = ctx;
   const diaJogo = jogo === "dia_jogo";
   const avisos = [];
   let keys = (POOL_EQUIV[macro] || []).slice();
@@ -363,6 +370,17 @@ export function opcoesEquivalencia(macro, gramsAlvo, ctx = {}) {
   if (macro === "cho" && refeicaoTipo === "preTreino" && diaJogo) {
     keys = keys.filter((k) => alimentoInfo(k)?.preJogo);
     avisos.push(ALERTAS.diaJogoNaoInventar);
+  }
+
+  // --- FILTRO POR HORÁRIO: só alimentos que fazem sentido nesta refeição.
+  // (arroz não aparece no café; aveia/pão/tapioca sim). Se zerar a lista,
+  // mantém o pool inteiro pra não quebrar a tela (fallback conservador).
+  if (contexto) {
+    const filtrado = keys.filter((k) => {
+      const cx = alimentoInfo(k)?.contextos;
+      return !cx || cx.includes(contexto);
+    });
+    if (filtrado.length > 0) keys = filtrado;
   }
 
   // --- PRIORIZAÇÃO por score (sort estável — V8/ES2019 preserva empates).

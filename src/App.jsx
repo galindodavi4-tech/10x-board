@@ -2026,7 +2026,7 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
         <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Refeições do dia típico</span>
       </div>
       <div className="flex flex-col gap-2.5 mb-5">
-        {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} onPickMacro={(macro, grams) => setEquiv({ macro, grams, refeicaoTipo: tipoRefeicao(r) })} />)}
+        {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} onPickMacro={(macro, grams) => setEquiv({ macro, grams, refeicaoTipo: tipoRefeicao(r), contexto: contextoRefeicao(r) })} />)}
       </div>
 
       {/* Etapa 5 — Suplementos (§7.9) e Alertas (§12.3) */}
@@ -2051,7 +2051,7 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
         <EquivalenciaModal
           macro={equiv.macro}
           grams={equiv.grams}
-          ctx={{ cenario: perfil.cenario, jogo: perfil.jogo, refeicaoTipo: equiv.refeicaoTipo }}
+          ctx={{ cenario: perfil.cenario, jogo: perfil.jogo, refeicaoTipo: equiv.refeicaoTipo, contexto: equiv.contexto }}
           onClose={() => setEquiv(null)}
         />
       )}
@@ -2066,6 +2066,20 @@ function tipoRefeicao(r) {
   if (r.preTreino) return "preTreino";
   if (r.ceia) return "ceia";
   return "normal";
+}
+
+/* Mapeia a refeição → contexto de horário (filtro por refeição da tabela).
+   Prioriza os flags de treino; senão usa a key (cafe/almoco/jantar/lanche). */
+function contextoRefeicao(r) {
+  if (r.intra) return "intra-treino";
+  if (r.posTreino) return "pos-treino";
+  if (r.preTreino) return "pre-treino";
+  if (r.ceia) return "ceia";
+  const k = r.key || "";
+  if (k.startsWith("lanche")) return "lanche";
+  if (k === "cafe") return "cafe";
+  if (k === "jantar") return "jantar";
+  return "almoco"; // fallback conservador (café e almoço têm fontes de sobra)
 }
 
 /* Perfil vazio inicial (peso pré-preenchido se já houver na hidratação). */
