@@ -4,7 +4,7 @@ import {
   Clock, Check, Trash2, Pencil, Sun, Moon, MonitorSmartphone, Sparkles,
   CheckCircle2, Zap, Activity, Brain, Smile, Gauge, BarChart3, Calendar as CalendarIcon,
   Repeat, TrendingUp, Award, AlertTriangle, Shield, Droplets, Scale,
-  CalendarDays, Apple, Quote, ListChecks, Home, Droplet
+  CalendarDays, Apple, Quote, ListChecks, Home, Droplet, Info
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -12,7 +12,8 @@ import {
 } from "recharts";
 import {
   OBJETIVOS, objetivoInfo, CENARIOS, cenarioInfo, JOGO_CONTEXTO, TIPOS_TREINO,
-  montarPlano, estruturarRefeicao, opcoesEquivalencia, CATEGORIAS_REFEICAO, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
+  montarPlano, estruturarRefeicao, opcoesEquivalencia, recomendarSuplementos, gerarAlertas,
+  CATEGORIAS_REFEICAO, AJUSTE_FAIXA, AVISO_RODAPE, AVISO_AVANCADO,
 } from "./data/nutricao";
 
 /* ------------------------------------------------------------------ */
@@ -2028,6 +2029,10 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
         {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} onPickMacro={(macro, grams) => setEquiv({ macro, grams, refeicaoTipo: tipoRefeicao(r) })} />)}
       </div>
 
+      {/* Etapa 5 — Suplementos (§7.9) e Alertas (§12.3) */}
+      <SuplementosCard perfil={perfil} metas={plano.metas} />
+      <AlertasCard perfil={perfil} plano={plano} />
+
       <div className="rounded-2xl p-3.5 mb-2 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
         <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
         <p className="text-[11px] leading-snug" style={{ color: C.muted }}>{AVISO_RODAPE}</p>
@@ -2233,6 +2238,80 @@ function RefeicaoCard({ r, onPickMacro }) {
       )}
       {est.aviso && <p className="text-[11px] mt-2" style={{ color: AMBER }}>{est.aviso}</p>}
       {r.ptnCapped && <p className="text-[10px] mt-1.5" style={{ color: C.muted }}>Proteína no teto de síntese ({r.ptn}g) — acima disso não adianta.</p>}
+    </div>
+  );
+}
+
+/* Etapa 5 — Suplementos recomendados (§7.9): dose + timing exatos,
+   filtrados por objetivo/cenário. */
+function SuplementosCard({ perfil, metas }) {
+  const C = useC();
+  const { lista, semSuplemento, avisoPerdaGordura } = useMemo(() => recomendarSuplementos(perfil, metas), [perfil, metas]);
+  return (
+    <div className="rounded-3xl p-5 mb-3" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center gap-1.5 mb-3">
+        <Sparkles size={16} color={C.pink} />
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Suplementos</span>
+      </div>
+
+      {/* §7.9 — não existe suplemento para perda de gordura corporal. */}
+      {avisoPerdaGordura && (
+        <div className="rounded-2xl p-3.5 mb-3 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${AMBER}` }}>
+          <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
+          <p className="text-[12px] leading-snug font-bold" style={{ color: AMBER }}>
+            Não existe suplemento para perda de gordura corporal. O que emagrece é o déficit calórico — suplemento nenhum substitui isso.
+          </p>
+        </div>
+      )}
+
+      {lista.length === 0 && !avisoPerdaGordura && (
+        <p className="text-[13px]" style={{ color: C.muted }}>Nenhum suplemento essencial pra este perfil — priorize a comida.</p>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {lista.map((s) => (
+          <div key={s.key} className="rounded-2xl px-3.5 py-3" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold" style={{ color: C.text }}>{s.nome}</span>
+              <span className="text-sm font-black shrink-0" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: C.pink }}>{s.dose}</span>
+            </div>
+            {s.timing && s.timing !== "—" && <p className="text-[12px] mt-0.5" style={{ color: C.muted }}>⏱ {s.timing}</p>}
+            {s.nota && <p className="text-[11px] leading-snug mt-1" style={{ color: C.muted }}>{s.nota}</p>}
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] leading-snug mt-3" style={{ color: C.muted }}>
+        Suplemento é complemento, não base. Nada aqui é obrigatório — comida em primeiro lugar.
+      </p>
+    </div>
+  );
+}
+
+/* Etapa 5 — Alertas e regras de ouro (§12.3): críticos em âmbar,
+   educacionais em cinza. */
+function AlertasCard({ perfil, plano }) {
+  const C = useC();
+  const alertas = useMemo(() => gerarAlertas(perfil, plano), [perfil, plano]);
+  if (!alertas.length) return null;
+  return (
+    <div className="rounded-3xl p-5 mb-3" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center gap-1.5 mb-3">
+        <Info size={16} color={WATER_BLUE} />
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Alertas & regras de ouro</span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {alertas.map((a, i) => {
+          const crit = a.nivel === "aviso";
+          return (
+            <div key={i} className="flex items-start gap-2">
+              {crit
+                ? <AlertTriangle size={14} color={AMBER} className="shrink-0 mt-0.5" />
+                : <Check size={14} color={WATER_BLUE} className="shrink-0 mt-0.5" />}
+              <p className="text-[12px] leading-snug" style={{ color: crit ? AMBER : C.text }}>{a.texto}</p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

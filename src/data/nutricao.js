@@ -633,3 +633,79 @@ export function montarPlano(perfil) {
   const refeicoes = distribuirMacros(metas, decidirRefeicoes(perfil));
   return { metas, refeicoes, choAlvoDia: round((metas.cho[0] + metas.cho[1]) / 2) };
 }
+
+/* ==================================================================
+ *  ETAPA 5 — SUPLEMENTOS (§7.9) + ALERTAS (§12.3) + AVISOS (§5.3)
+ * ================================================================== */
+
+/* §7.9 — suplementos recomendados p/ o perfil (objetivo + cenário).
+   Dose e timing exatos do §7. Cafeína usa mg/kg × peso do atleta.
+   DECISÃO NOSSA: usamos a dose de MANUTENÇÃO da creatina (3–5 g/dia),
+   não o protocolo de saturação — por isso NÃO disparamos o aviso
+   "estratégia avançada" da creatina (só ele exigiria isso). Mais
+   conservador e é o que o curso recomenda no dia a dia. */
+export function recomendarSuplementos(perfil, metas) {
+  const obj = perfil.objetivo, cen = perfil.cenario;
+  let keys;
+  if (cen === "alojamento") keys = SUPLEMENTOS_POR_PERFIL.alojamento;            // orçamento: só os 2 essenciais (§8.4)
+  else if (cen === "lesao") keys = [...(SUPLEMENTOS_POR_PERFIL[obj] || []), ...SUPLEMENTOS_POR_PERFIL.lesao];
+  else keys = SUPLEMENTOS_POR_PERFIL[obj] || [];
+  keys = [...new Set(keys)];
+
+  const peso = num(perfil.pesoKg);
+  const lista = keys.map((k) => {
+    const s = SUPLEMENTOS[k];
+    let dose = s.dose;
+    if (k === "cafeina" && s.doseMgPorKg && peso > 0) {
+      const [lo, hi] = s.doseMgPorKg;
+      dose = `${round(lo * peso)}–${round(hi * peso)} mg (${lo}–${hi} mg/kg)`;
+    }
+    return { key: k, nome: s.nome, dose, timing: s.timing, nota: s.nota };
+  });
+
+  // §7.9 — não existe suplemento para PERDA DE GORDURA corporal.
+  const semSuplemento = obj === "perda_gordura" && cen !== "lesao" && lista.length === 0;
+  return { lista, semSuplemento, avisoPerdaGordura: obj === "perda_gordura" };
+}
+
+/* §12.3 — alertas/regras relevantes p/ o perfil e o plano gerado.
+   nivel "aviso" (crítico, âmbar) | "regra" (educacional). */
+export function gerarAlertas(perfil, plano) {
+  const A = [];
+  const add = (nivel, texto) => A.push({ nivel, texto });
+  const refs = plano?.refeicoes || [];
+
+  // Proteína acima do teto de síntese numa refeição (o motor já limita —
+  // registra só se por algum motivo passar de 40g).
+  if (refs.some((r) => r.ptn > 40)) add("aviso", ALERTAS.ptnRefeicaoAlta);
+
+  // Cenário lesão: cortar calorias é contraproducente (§4.6).
+  if (perfil.cenario === "lesao") add("aviso", ALERTAS.lesaoCortaCalorias);
+
+  // Perda de gordura: não existe suplemento p/ isso (§7.9).
+  if (perfil.objetivo === "perda_gordura") add("regra", ALERTAS.supPerdaGordura);
+
+  // Intra-treino só faz sentido em treino/bloco > 60 min (§12.3).
+  const soTreinoCurto = (perfil.treinos || []).length > 0 &&
+    (perfil.treinos || []).every((t) => num(t.duracaoMin) > 0 && num(t.duracaoMin) <= 60);
+  if (soTreinoCurto && !refs.some((r) => r.intra)) add("regra", ALERTAS.intraDesnecessario);
+
+  // Whey no pré-sono / ceia → usar com LEITE (caseína), não com água (§7).
+  if (refs.some((r) => r.ceia)) add("regra", ALERTAS.wheyPreSonoAgua);
+
+  // Whey no pré-treino não é interessante (§7).
+  if (refs.some((r) => r.preTreino)) add("regra", ALERTAS.wheyPreTreino);
+
+  // Reposição de sódio é importantíssima p/ quem sua muito (§4.7).
+  add("regra", ALERTAS.sudoreseSodio);
+
+  // Regra de ouro sempre válida: teto de proteína por refeição.
+  add("regra", ALERTAS.ptnRefeicaoAlta);
+
+  // Estratégia avançada — 24h antes do jogo (§4.3 carga de CHO).
+  if (perfil.jogo === "vespera_24h") add("aviso", ALERTAS.cargaCho24h);
+
+  // Dedupe por texto (evita repetir o teto de proteína se já entrou acima).
+  const vistos = new Set();
+  return A.filter((a) => (vistos.has(a.texto) ? false : (vistos.add(a.texto), true)));
+}
