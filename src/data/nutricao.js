@@ -142,40 +142,40 @@ export const ALIMENTOS = [
   { key: "batata_inglesa", label: "Batata inglesa cozida", cat: "carbo", cho: 20, ptn: 1.9, lip: 0.1, kcal: 87, barato: true },
   { key: "mandioca", label: "Mandioca cozida", cat: "carbo", cho: 30, ptn: 1.4, lip: 0.3, kcal: 125 },
   { key: "inhame", label: "Inhame cozido", cat: "carbo", cho: 27, ptn: 1.5, lip: 0.2, kcal: 116 },
-  { key: "pao_frances", label: "Pão francês", cat: "carbo", cho: 58, ptn: 8.0, lip: 3.1, kcal: 300, barato: true, preJogo: true },
-  { key: "aveia", label: "Aveia (crua)", cat: "carbo", cho: 67, ptn: 14, lip: 7.0, kcal: 389, barato: true },
+  { key: "pao_frances", label: "Pão francês", cat: "carbo", cho: 58, ptn: 8.0, lip: 3.1, kcal: 300, barato: true, preJogo: true, unidade: { nome: "unidade", nomePl: "unidades", gramas: 50 } },
+  { key: "aveia", label: "Aveia (crua)", cat: "carbo", cho: 67, ptn: 14, lip: 7.0, kcal: 389, barato: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 } },
   { key: "tapioca", label: "Tapioca (goma)", cat: "carbo", cho: 62, ptn: 0.3, lip: 0.1, kcal: 250, barato: true, preJogo: true },
   { key: "cuscuz", label: "Cuscuz de milho cozido", cat: "carbo", cho: 25, ptn: 2.2, lip: 0.6, kcal: 113, barato: true, preJogo: true },
-  { key: "banana", label: "Banana", cat: "fruta", cho: 23, ptn: 1.1, lip: 0.3, kcal: 89, barato: true, preJogo: true },
+  { key: "banana", label: "Banana", cat: "fruta", cho: 23, ptn: 1.1, lip: 0.3, kcal: 89, barato: true, preJogo: true, unidade: { nome: "banana", nomePl: "bananas", gramas: 100 } },
   { key: "feijao", label: "Feijão cozido", cat: "carbo", cho: 14, ptn: 5.0, lip: 0.5, kcal: 76, barato: true },
   { key: "maltodextrina", label: "Maltodextrina", cat: "suplemento", cho: 95, ptn: 0, lip: 0, kcal: 380, preJogo: true },
   // Proteínas (animal)
   { key: "frango", label: "Peito de frango grelhado", cat: "proteina", cho: 0, ptn: 32, lip: 3.6, kcal: 165, barato: true, antiInflam: false },
   { key: "carne_bovina", label: "Carne bovina magra", cat: "proteina", cho: 0, ptn: 26, lip: 8.0, kcal: 180 },
   { key: "carne_suina", label: "Carne suína magra", cat: "proteina", cho: 0, ptn: 27, lip: 7.0, kcal: 175, barato: true },
-  { key: "atum", label: "Atum (lata, água)", cat: "proteina", cho: 0, ptn: 26, lip: 1.0, kcal: 116, antiInflam: true },
-  { key: "sardinha", label: "Sardinha (lata)", cat: "proteina", cho: 0, ptn: 25, lip: 11, kcal: 200, antiInflam: true },
-  // Ovo: tabela por 100g (§12.5). unidadeG = peso de 1 unidade p/ exibir "≈ N ovos" (§8.1: 4–5 ovos ≈ 28g PTN).
-  { key: "ovo", label: "Ovo", cat: "proteina", cho: 1.2, ptn: 12.6, lip: 10.6, kcal: 144, barato: true, unidadeG: 50, unidadeNome: "ovo", unidadeNomePl: "ovos" },
-  { key: "leite_integral", label: "Leite integral", cat: "proteina", cho: 4.8, ptn: 3.2, lip: 3.3, kcal: 61, barato: true },
-  { key: "leite_po", label: "Leite em pó", cat: "proteina", cho: 38, ptn: 26, lip: 26, kcal: 496 },
-  { key: "iogurte", label: "Iogurte natural", cat: "proteina", cho: 4.7, ptn: 3.5, lip: 3.3, kcal: 61 },
+  { key: "atum", label: "Atum (lata, água)", cat: "proteina", cho: 0, ptn: 26, lip: 1.0, kcal: 116, antiInflam: true, unidade: { nome: "lata", nomePl: "latas", gramas: 120 } },
+  { key: "sardinha", label: "Sardinha (lata)", cat: "proteina", cho: 0, ptn: 25, lip: 11, kcal: 200, antiInflam: true, unidade: { nome: "lata", nomePl: "latas", gramas: 120 } },
+  // Ovo: tabela por 100g (§12.5). unidade p/ exibir "≈ N ovos" (§8.1: 4–5 ovos ≈ 28g PTN).
+  { key: "ovo", label: "Ovo", cat: "proteina", cho: 1.2, ptn: 12.6, lip: 10.6, kcal: 144, barato: true, unidade: { nome: "ovo", nomePl: "ovos", gramas: 50 } },
+  { key: "leite_integral", label: "Leite integral", cat: "proteina", cho: 4.8, ptn: 3.2, lip: 3.3, kcal: 61, barato: true, unidade: { nome: "copo", nomePl: "copos", gramas: 200 } },
+  { key: "leite_po", label: "Leite em pó", cat: "proteina", cho: 38, ptn: 26, lip: 26, kcal: 496, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 } },
+  { key: "iogurte", label: "Iogurte natural", cat: "proteina", cho: 4.7, ptn: 3.5, lip: 3.3, kcal: 61, unidade: { nome: "pote", nomePl: "potes", gramas: 170 } },
   { key: "mucarela", label: "Muçarela", cat: "proteina", cho: 2.2, ptn: 22, lip: 22, kcal: 300 },
-  { key: "whey", label: "Whey protein (pó)", cat: "suplemento", cho: 8.0, ptn: 75, lip: 5.0, kcal: 380 },
+  { key: "whey", label: "Whey protein (pó)", cat: "suplemento", cho: 8.0, ptn: 75, lip: 5.0, kcal: 380, unidade: { nome: "scoop", nomePl: "scoops", gramas: 30 } },
   // Gorduras boas (anti-inflamatórias §4.6)
-  { key: "azeite", label: "Azeite extra virgem", cat: "gordura", cho: 0, ptn: 0, lip: 100, kcal: 884, antiInflam: true },
+  { key: "azeite", label: "Azeite extra virgem", cat: "gordura", cho: 0, ptn: 0, lip: 100, kcal: 884, antiInflam: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 13 } },
   { key: "abacate", label: "Abacate", cat: "gordura", cho: 9, ptn: 2.0, lip: 15, kcal: 160, antiInflam: true },
   { key: "castanha_para", label: "Castanha do Pará", cat: "gordura", cho: 12, ptn: 14, lip: 66, kcal: 656, antiInflam: true },
   { key: "amendoim", label: "Amendoim", cat: "gordura", cho: 16, ptn: 26, lip: 49, kcal: 567, antiInflam: true },
-  { key: "pasta_amendoim", label: "Pasta de amendoim", cat: "gordura", cho: 20, ptn: 25, lip: 50, kcal: 588, antiInflam: true },
+  { key: "pasta_amendoim", label: "Pasta de amendoim", cat: "gordura", cho: 20, ptn: 25, lip: 50, kcal: 588, antiInflam: true, unidade: { nome: "colher de sopa", nomePl: "colheres de sopa", gramas: 15 } },
   // Legumes/verduras (COMPLEMENTO — micronutrientes obrigatórios §12.2)
   { key: "brocolis", label: "Brócolis cozido", cat: "legume", cho: 7.0, ptn: 2.4, lip: 0.4, kcal: 35, barato: true, antiInflam: true },
   { key: "cenoura", label: "Cenoura", cat: "legume", cho: 10, ptn: 0.9, lip: 0.2, kcal: 41, barato: true, antiInflam: true },
   { key: "beterraba", label: "Beterraba", cat: "legume", cho: 10, ptn: 1.6, lip: 0.2, kcal: 43, barato: true, antiInflam: true },
   { key: "tomate", label: "Tomate", cat: "legume", cho: 3.9, ptn: 0.9, lip: 0.2, kcal: 18, barato: true, antiInflam: true },
   // Frutas
-  { key: "laranja", label: "Laranja", cat: "fruta", cho: 12, ptn: 0.9, lip: 0.1, kcal: 47, barato: true, antiInflam: true },
-  { key: "maca", label: "Maçã", cat: "fruta", cho: 14, ptn: 0.3, lip: 0.2, kcal: 52, barato: true, antiInflam: true },
+  { key: "laranja", label: "Laranja", cat: "fruta", cho: 12, ptn: 0.9, lip: 0.1, kcal: 47, barato: true, antiInflam: true, unidade: { nome: "laranja", nomePl: "laranjas", gramas: 130 } },
+  { key: "maca", label: "Maçã", cat: "fruta", cho: 14, ptn: 0.3, lip: 0.2, kcal: 52, barato: true, antiInflam: true, unidade: { nome: "maçã", nomePl: "maçãs", gramas: 130 } },
 ];
 export const alimentoInfo = (k) => ALIMENTOS.find((a) => a.key === k);
 
@@ -336,6 +336,20 @@ function arredondarPratico(g) {
   return g < 10 ? Math.round(g * 2) / 2 : Math.round(g);
 }
 
+/* Converte gramas exatas → unidade caseira ("1½ bananas", "1 lata",
+   "5 ovos"), arredondando a fração pra meio/inteiro (nada de "1,37").
+   Devolve null se o alimento não tem unidade natural ou se der < ½. */
+function unidadeCaseira(unidade, gExato) {
+  if (!unidade || !unidade.gramas) return null;
+  const q = Math.round((gExato / unidade.gramas) * 2) / 2; // nearest 0.5
+  if (q < 0.5) return null;
+  const inteiro = Math.floor(q + 1e-9);
+  const temMeio = Math.abs(q - inteiro - 0.5) < 1e-9;
+  const numStr = temMeio ? (inteiro === 0 ? "½" : `${inteiro}½`) : `${inteiro}`;
+  const noun = q > 1 + 1e-9 ? unidade.nomePl : unidade.nome; // plural só acima de 1
+  return `${numStr} ${noun}`;
+}
+
 /* macro: "cho"|"ptn"|"lip"; gramsAlvo: meta em g; ctx: {cenario, jogo, refeicaoTipo}
    refeicaoTipo ∈ "preTreino"|"posTreino"|"ceia"|"normal"|"intra"
    Retorna { titulo, opcoes:[{key,label,cat,grams,unidade?,obs?,tags:[]}], avisos:[] } */
@@ -367,11 +381,8 @@ export function opcoesEquivalencia(macro, gramsAlvo, ctx = {}) {
     const por100 = f[macro];
     const gExato = por100 > 0 ? (gramsAlvo / por100) * 100 : 0;
     const o = { key: k, label: f.label, cat: f.cat, grams: arredondarPratico(gExato), tags: [] };
-    // Unidades (ovo): §8.1 ≈ 4–5 ovos p/ 28g PTN. Conta pela grama exata.
-    if (f.unidadeG) {
-      const lo = Math.floor(gExato / f.unidadeG), hi = Math.ceil(gExato / f.unidadeG);
-      o.unidade = lo === hi ? `${lo} ${lo === 1 ? f.unidadeNome : f.unidadeNomePl}` : `${lo}–${hi} ${f.unidadeNomePl}`;
-    }
+    // Unidade caseira quando o alimento tem uma (banana, ovo, lata, copo…).
+    o.unidade = unidadeCaseira(f.unidade, gExato); // ex: "1½ bananas" | null
     if (o.grams >= 400) o.tags.push("volume");                 // §12.3 volume alto (ex: iogurte 800g)
     if (k === "whey" && refeicaoTipo === "ceia") o.obs = "com LEITE, não com água"; // §7 caseína
     if (diaJogo && refeicaoTipo === "normal" && macro !== "lip" && f.lip >= 10) o.tags.push("gorduroso"); // §4.3 dia de jogo: evitar gordura

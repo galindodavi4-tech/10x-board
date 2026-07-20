@@ -2267,8 +2267,7 @@ function EquivalenciaModal({ macro, grams, ctx, onClose }) {
             <div className="min-w-0">
               <p className="text-sm font-bold truncate" style={{ color: C.text }}>{o.label}</p>
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                {o.unidade && <span className="text-[11px]" style={{ color: C.muted }}>≈ {o.unidade}</span>}
-                {o.obs && <span className="text-[11px] font-bold" style={{ color: AMBER }}>· {o.obs}</span>}
+                {o.obs && <span className="text-[11px] font-bold" style={{ color: AMBER }}>{o.obs}</span>}
                 {o.tags.map((t) => (
                   <span key={t} style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 6, color: tagInfo[t]?.cor || C.muted, border: `1px solid ${tagInfo[t]?.cor || C.line}`, fontFamily: "'Barlow Condensed', sans-serif" }}>
                     {tagInfo[t]?.texto || t}
@@ -2276,9 +2275,19 @@ function EquivalenciaModal({ macro, grams, ctx, onClose }) {
                 ))}
               </div>
             </div>
-            <span className="shrink-0 font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, color: cor }}>
-              {o.grams}<span className="text-xs" style={{ color: C.muted }}> g</span>
-            </span>
+            {/* Unidade caseira em destaque; gramas exatas entre parênteses pra quem pesa. */}
+            <div className="shrink-0 text-right leading-none">
+              {o.unidade ? (
+                <>
+                  <p className="font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, color: cor }}>≈ {o.unidade}</p>
+                  <p className="text-[11px] mt-1" style={{ color: C.muted }}>{o.grams} g</p>
+                </>
+              ) : (
+                <span className="font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, color: cor }}>
+                  {o.grams}<span className="text-xs" style={{ color: C.muted }}> g</span>
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>
