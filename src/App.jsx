@@ -2092,6 +2092,7 @@ function perfilPadrao(weight) {
     objetivo: "performance", cenario: "rotina", jogo: "nenhum",
     ajusteControle: AJUSTE_FAIXA.inicio, // superávit/déficit (500–1000), ajustável
     acorda: "07:00", dorme: "23:00", escolaInicio: "", escolaFim: "",
+    escolaIntervalos: [], // recreios pra lanchar (opcional): [{ inicio, duracaoMin }]
     treinos: [{ tipo: "musculacao", inicio: "16:00", duracaoMin: "60" }],
   };
 }
@@ -2395,12 +2396,17 @@ function EquivalenciaModal({ macro, grams, ctx, onClose }) {
 /* Questionário CFGA — salvo no localStorage, reeditável. */
 function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
   const C = useC();
-  const [d, setD] = useState(() => ({ ...perfilPadrao(null), ...inicial, treinos: (inicial.treinos && inicial.treinos.length ? inicial.treinos.map((t) => ({ ...t })) : perfilPadrao(null).treinos) }));
+  const [d, setD] = useState(() => ({ ...perfilPadrao(null), ...inicial, treinos: (inicial.treinos && inicial.treinos.length ? inicial.treinos.map((t) => ({ ...t })) : perfilPadrao(null).treinos), escolaIntervalos: (inicial.escolaIntervalos || []).map((iv) => ({ ...iv })) }));
   const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
   const set = (patch) => setD((p) => ({ ...p, ...patch }));
   const setTreino = (i, patch) => setD((p) => ({ ...p, treinos: p.treinos.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
   const addTreino = () => setD((p) => ({ ...p, treinos: [...p.treinos, { tipo: "futebol", inicio: "16:00", duracaoMin: "90" }] }));
   const removeTreino = (i) => setD((p) => ({ ...p, treinos: p.treinos.filter((_, j) => j !== i) }));
+  // Intervalos de escola (recreios) — mesmo padrão de "adicionar mais um" dos treinos.
+  const temIntervalo = (d.escolaIntervalos || []).length > 0;
+  const setIntervalo = (i, patch) => setD((p) => ({ ...p, escolaIntervalos: p.escolaIntervalos.map((iv, j) => (j === i ? { ...iv, ...patch } : iv)) }));
+  const addIntervalo = () => setD((p) => ({ ...p, escolaIntervalos: [...(p.escolaIntervalos || []), { inicio: "10:00", duracaoMin: "20" }] }));
+  const removeIntervalo = (i) => setD((p) => ({ ...p, escolaIntervalos: p.escolaIntervalos.filter((_, j) => j !== i) }));
   const puxarDoApp = () => {
     const ts = treinosDoDiaApp(cards, completions);
     if (ts.length) setD((p) => ({ ...p, treinos: ts }));
@@ -2480,6 +2486,38 @@ function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
           <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.escolaInicio} onChange={(e) => set({ escolaInicio: e.target.value })} />
           <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.escolaFim} onChange={(e) => set({ escolaFim: e.target.value })} />
         </div>
+
+        {/* Intervalos/recreios pra lanchar (opcional). Só mostra se a escola foi informada. */}
+        {(d.escolaInicio || d.escolaFim || temIntervalo) && (
+          <div className="mt-3 rounded-2xl p-3" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold" style={{ color: C.text }}>Tem intervalo pra lanchar na escola?</span>
+              {!temIntervalo && (
+                <button onClick={addIntervalo} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ background: C.surface, color: C.pink, border: `1px solid ${C.line}` }}>Sim</button>
+              )}
+            </div>
+            {temIntervalo && (
+              <div className="flex flex-col gap-2 mt-2.5">
+                {d.escolaIntervalos.map((iv, i) => (
+                  <div key={i} className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Início</label>
+                      <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={iv.inicio} onChange={(e) => setIntervalo(i, { inicio: e.target.value })} />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Duração (min)</label>
+                      <input type="number" min="0" step="5" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={iv.duracaoMin} onChange={(e) => setIntervalo(i, { duracaoMin: e.target.value })} />
+                    </div>
+                    <button onClick={() => removeIntervalo(i)} aria-label="Remover intervalo" className="pb-2.5"><Trash2 size={14} color={C.muted} /></button>
+                  </div>
+                ))}
+                <button onClick={addIntervalo} className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[12px] font-bold" style={{ background: C.surface, color: C.pink, border: `1px dashed ${C.line}` }}>
+                  <Plus size={13} /> Adicionar intervalo
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </Field>
 
       <Field label="Treinos do dia">

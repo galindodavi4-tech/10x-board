@@ -421,7 +421,7 @@ const hm2min = (hm) => { if (!hm) return null; const [h, m] = hm.split(":").map(
 const min2hm = (min) => { min = ((Math.round(min) % 1440) + 1440) % 1440; const h = Math.floor(min / 60), m = min % 60; return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`; };
 
 /* Duração assumida de cada refeição (min) — usada p/ detectar "colado". */
-const DUR_REFEICAO = { cafe: 60, almoco: 60, jantar: 60, lanche_manha: 20, lanche_tarde: 20, ceia: 30, pre_treino: 20, pos_treino: 20, intra: 0 };
+const DUR_REFEICAO = { cafe: 60, almoco: 60, jantar: 60, lanche_manha: 20, lanche_tarde: 20, lanche_escola: 20, ceia: 30, pre_treino: 20, pos_treino: 20, intra: 0 };
 /* Limiar de "colado no treino": refeição termina < 45 min antes → é a       */
 /* pré imediata, mantém LEVE (janela 30–15 min = só 30–60g de CHO).          */
 const COLADO_MIN = 45;
@@ -453,6 +453,13 @@ export function decidirRefeicoes(perfil) {
   const sleep = hm2min(perfil.dorme) ?? 23 * 60;
   const escFim = hm2min(perfil.escolaFim);
   const escIni = hm2min(perfil.escolaInicio);
+  const temEscola = escIni != null && escFim != null;
+  // Intervalos/recreios informados dentro da escola — janelas válidas p/ lanche.
+  const escIntervalos = (perfil.escolaIntervalos || [])
+    .filter((iv) => iv.inicio && num(iv.duracaoMin) > 0)
+    .map((iv) => ({ ini: hm2min(iv.inicio), dur: num(iv.duracaoMin), fim: hm2min(iv.inicio) + num(iv.duracaoMin) }))
+    .filter((iv) => !temEscola || (iv.ini >= escIni && iv.fim <= escFim + 5)) // dentro do período de aula
+    .sort((a, b) => a.ini - b.ini);
   const aloj = perfil.cenario === "alojamento";
   const diaJogo = perfil.jogo === "dia_jogo" || perfil.jogo === "vespera_24h";
   const treinos = (perfil.treinos || [])
@@ -475,9 +482,28 @@ export function decidirRefeicoes(perfil) {
   tJantar = Math.min(tJantar, sleep - 90);
   add({ key: "jantar", label: "Jantar", tier: "essencial", time: tJantar });
 
-  // LANCHE manhã: intervalo café→almoço > 4h OU alojamento
+  // LANCHE manhã / escola.
+  // PRIORIDADE: se houver intervalo(s) de escola informado(s), cada um vira
+  // uma janela de "Lanche (escola)" posicionada DENTRO do intervalo — e o
+  // resto do período de aula fica bloqueado (nada de lanche no meio da aula).
+  // Sem intervalo informado → comportamento antigo (regra do gap > 4h).
   const gapM = tAlmoco - (tCafe + DUR_REFEICAO.cafe);
-  if (gapM > 240 || aloj) {
+  if (escIntervalos.length > 0) {
+    escIntervalos.forEach((iv, idx) => {
+      // Intervalo curto (< 15 min, §colado): trata como refeição colada —
+      // leve e de fácil digestão, nada que precise de preparo. Mas todo
+      // recreio já é um lanche rápido, então marcamos `leve` sempre.
+      const curto = iv.dur < 15;
+      add({
+        key: `lanche_escola_${idx}`, label: "Lanche (escola)", tier: "recomendado", leve: true, escolaCurta: curto,
+        nota: curto
+          ? "Intervalo curto: lanche rápido e de fácil digestão (fruta, barra, sanduíche pronto) — nada que precise de preparo ou muito tempo pra comer."
+          : "Intervalo da escola: lanche leve pra manter a energia até o almoço (fruta, sanduíche, iogurte).",
+        time: iv.ini, // no início do recreio (a porção cabe dentro do intervalo)
+        dur: Math.min(iv.dur, DUR_REFEICAO.lanche_escola),
+      });
+    });
+  } else if (gapM > 240 || aloj) {
     add({
       key: "lanche_manha", label: escIni != null ? "Lanche (escola)" : "Lanche da manhã", tier: "recomendado",
       nota: aloj ? "Alojamento: foco em carboidrato (bolo, frutas, pães, suco)." : "Intervalo maior que 4h entre café e almoço — o curso recomenda um lanche pra manter a energia.",
@@ -541,9 +567,16 @@ export function decidirRefeicoes(perfil) {
 
   // Nenhuma refeição NORMAL pode cair dentro de uma janela de treino — só
   // pré/intra/pós tocam o treino. Remove lanches que colidem com um bloco.
+  // Além disso, dentro da escola um lanche só é permitido se estiver num
+  // intervalo informado (fora dos intervalos, o período de aula fica bloqueado).
   const semColisao = meals.filter((m) => {
-    if (!["lanche_manha", "lanche_tarde"].includes(m.key)) return true;
-    return !blocos.some((bl) => overlaps(m.time, m.time + m.dur, bl.ini, bl.fim));
+    if (!m.key.startsWith("lanche")) return true;
+    if (blocos.some((bl) => overlaps(m.time, m.time + m.dur, bl.ini, bl.fim))) return false;
+    if (temEscola && escIntervalos.length > 0 && overlaps(m.time, m.time + m.dur, escIni, escFim)) {
+      // só passa se couber inteiro num intervalo informado
+      return escIntervalos.some((iv) => m.time >= iv.ini - 1 && m.time + m.dur <= iv.fim + 5);
+    }
+    return true;
   });
 
   // Ordena por horário. A sequência pré < intra < pós fica garantida pelos
@@ -561,6 +594,7 @@ function atribuirPesosMacro(meals, blocos) {
     if (m.intra) { carbW = 1.4; protW = 0.2; fatW = 0.0; }
     else if (m.posTreino) { carbW = 1.8; protW = 1.3; fatW = 0.3; }
     else if (m.ceia) { carbW = 0.6; protW = 1.0; fatW = 1.0; }
+    else if (m.leve) { carbW = 0.6; protW = 0.6; fatW = 0.3; } // lanche de recreio — porção leve/rápida
     else {
       const mEnd = m.time + m.dur;
       const blocoDepois = blocos.find((b) => b.ini >= mEnd); // bloco após esta refeição
