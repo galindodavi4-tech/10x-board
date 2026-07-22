@@ -467,6 +467,10 @@ export function decidirRefeicoes(perfil) {
     .map((t) => ({ tipo: t.tipo, ini: hm2min(t.inicio), dur: num(t.duracaoMin), fim: hm2min(t.inicio) + num(t.duracaoMin) }))
     .sort((a, b) => a.ini - b.ini);
   const blocos = construirBlocos(treinos);
+  // Blocos "ocupados" que não são treino (CFGA, tática, cardio…) vindos da
+  // agenda da Organização: bloqueiam refeição no horário, mesma lógica de
+  // colisão do treino/escola. {ini, fim} já em minutos.
+  const bloqueios = (perfil.bloqueios || []).filter((b) => b && b.ini != null && b.fim != null);
   const NORMAIS = ["cafe", "almoco", "jantar", "lanche_manha", "lanche_tarde"];
 
   const meals = [];
@@ -572,6 +576,7 @@ export function decidirRefeicoes(perfil) {
   const semColisao = meals.filter((m) => {
     if (!m.key.startsWith("lanche")) return true;
     if (blocos.some((bl) => overlaps(m.time, m.time + m.dur, bl.ini, bl.fim))) return false;
+    if (bloqueios.some((b) => overlaps(m.time, m.time + m.dur, b.ini, b.fim))) return false; // CFGA/tática/cardio
     if (temEscola && escIntervalos.length > 0 && overlaps(m.time, m.time + m.dur, escIni, escFim)) {
       // só passa se couber inteiro num intervalo informado
       return escIntervalos.some((iv) => m.time >= iv.ini - 1 && m.time + m.dur <= iv.fim + 5);

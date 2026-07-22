@@ -261,6 +261,7 @@ function getOccurrencesForDate(cards, completions, iso) {
           type: c.type,
           endDate: c.endDate || "",
           recurrence: c.recurrence,
+          intervalos: c.intervalos || [],
           isRecurring: true,
           status: comp ? comp.status : "pendente",
           feedback: comp ? comp.feedback : null,
@@ -279,6 +280,7 @@ function getOccurrencesForDate(cards, completions, iso) {
           type: c.type,
           endDate: c.endDate || "",
           recurrence: null,
+          intervalos: c.intervalos || [],
           isRecurring: false,
           status: c.status,
           feedback: c.feedback,
@@ -657,7 +659,7 @@ export default function App() {
   function openNewCard(dateISO) {
     setActiveCard({
       __new: true, date: dateISO, time: "16:00", endTime: "", title: "", type: "forca", endDate: "",
-      recurrence: { type: "none", days: [], until: "" },
+      recurrence: { type: "none", days: [], until: "" }, intervalos: [],
     });
     setShowAddCard(true);
   }
@@ -671,6 +673,7 @@ export default function App() {
       type: occ.type,
       endDate: occ.endDate,
       recurrence: occ.recurrence || { type: "none", days: [], until: "" },
+      intervalos: occ.intervalos || [],
     });
     setShowAddCard(true);
   }
@@ -678,16 +681,19 @@ export default function App() {
     const recurrence = draft.recurrence && draft.recurrence.type !== "none"
       ? { type: draft.recurrence.type, days: draft.recurrence.days || [], until: draft.recurrence.until || "" }
       : null;
+    // Intervalos só fazem sentido pra ESCOLA (recreios). Guardados no card
+    // pra Nutrição derivar o lanche da escola sem pedir de novo.
+    const intervalos = draft.type === "escola" ? (draft.intervalos || []).filter((iv) => iv.inicio && Number(iv.duracaoMin) > 0) : [];
     if (draft.__new) {
       const newCard = {
         id: `c_${Date.now()}`, title: draft.title, type: draft.type, time: draft.time, endTime: draft.endTime || "",
         date: draft.date, endDate: recurrence ? "" : (draft.endDate || ""),
-        recurrence, status: "pendente", feedback: null,
+        recurrence, status: "pendente", feedback: null, intervalos,
       };
       updateCards((prev) => [...prev, newCard]);
     } else {
       updateCards((prev) => prev.map((c) => (c.id === draft.id
-        ? { ...c, title: draft.title, type: draft.type, time: draft.time, endTime: draft.endTime || "", date: draft.date, endDate: recurrence ? "" : (draft.endDate || ""), recurrence }
+        ? { ...c, title: draft.title, type: draft.type, time: draft.time, endTime: draft.endTime || "", date: draft.date, endDate: recurrence ? "" : (draft.endDate || ""), recurrence, intervalos }
         : c)));
     }
     setShowAddCard(false);
@@ -1985,9 +1991,36 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
   const [editando, setEditando] = useState(false);
   // Etapa 4 — equivalência: {macro, grams, refeicaoTipo} do valor clicado.
   const [equiv, setEquiv] = useState(null);
+  // Dia da semana selecionado (0=Seg … 6=Dom). Cada dia lê a agenda daquele dia.
+  const [dia, setDia] = useState(() => dowOf(toISO(new Date())));
 
-  // Plano completo (metas + refeições distribuídas) para o "dia típico".
-  const plano = useMemo(() => (perfil ? montarPlano(perfil) : null), [perfil]);
+  // Deriva horários/treinos/escola/sono da Organização pro dia selecionado.
+  const agenda = useMemo(
+    () => (perfil ? agendaDoDia(cards, completions, isoDoDiaDaSemana(dia)) : null),
+    [perfil, cards, completions, dia]
+  );
+
+  // Perfil "efetivo": mistura o perfil nutricional (peso/objetivo/cenário) com
+  // os horários derivados da agenda. Sono ausente → usa fallback manual do
+  // perfil, senão defaults (o motor não quebra). A LÓGICA do motor não muda:
+  // só muda de ONDE vêm acorda/dorme/escola/treinos.
+  const perfilEfetivo = useMemo(() => {
+    if (!perfil || !agenda) return null;
+    return {
+      ...perfil,
+      acorda: agenda.acorda || perfil.acordaManual || "07:00",
+      dorme: agenda.dorme || perfil.dormeManual || "23:00",
+      escolaInicio: agenda.escolaInicio,
+      escolaFim: agenda.escolaFim,
+      escolaIntervalos: agenda.escolaIntervalos,
+      treinos: agenda.treinos,
+      bloqueios: agenda.bloqueios,
+    };
+  }, [perfil, agenda]);
+
+  // Plano completo (metas + refeições distribuídas) para o dia selecionado.
+  const plano = useMemo(() => (perfilEfetivo ? montarPlano(perfilEfetivo) : null), [perfilEfetivo]);
+  const setManual = (patch) => onSave({ ...perfil, ...patch });
 
   if (!perfil) {
     return (
@@ -2007,7 +2040,6 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
         {editando && (
           <QuestionarioCFGA
             inicial={perfilPadrao(weight)}
-            cards={cards} completions={completions}
             onClose={() => setEditando(false)}
             onSave={(p) => { onSave(p); setEditando(false); }}
           />
@@ -2018,20 +2050,58 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
 
   return (
     <div>
-      <ResumoNutricional metas={plano.metas} perfil={perfil} onEdit={() => setEditando(true)} />
+      {/* Seletor de dia da semana — cada dia lê a agenda da Organização e gera
+          seu próprio plano automaticamente. */}
+      <div className="grid grid-cols-7 gap-1 mb-4">
+        {WEEKDAY_LABELS.map((l, i) => {
+          const ativo = i === dia;
+          return (
+            <button key={l} onClick={() => setDia(i)} className="rounded-xl py-2 text-[11px] font-bold"
+              style={{ background: ativo ? C.pink : C.surface2, color: ativo ? "#fff" : C.muted, border: `1px solid ${ativo ? C.pink : C.line}`, fontFamily: "'Barlow Condensed', sans-serif" }}>
+              {l}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Aviso de dado faltando (ex: sono não cadastrado) + fallback manual. */}
+      {agenda?.faltando?.sono && (
+        <div className="rounded-2xl p-3.5 mb-4" style={{ background: C.surface2, border: `1px solid ${AMBER}` }}>
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
+            <p className="text-[12px] leading-snug" style={{ color: AMBER }}>
+              Sono não cadastrado na Organização para {WEEKDAY_FULL[dia]}. Sem esse dado o plano pode não refletir sua rotina real — cadastre um evento de SONO na aba Organização, ou informe abaixo.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Acorda</label>
+              <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={{ background: C.surface, border: `1px solid ${C.line}`, color: C.text }}
+                value={perfil.acordaManual || ""} onChange={(e) => setManual({ acordaManual: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Dorme</label>
+              <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={{ background: C.surface, border: `1px solid ${C.line}`, color: C.text }}
+                value={perfil.dormeManual || ""} onChange={(e) => setManual({ dormeManual: e.target.value })} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ResumoNutricional metas={plano.metas} perfil={perfilEfetivo} onEdit={() => setEditando(true)} />
 
       {/* Etapa 2 — refeições do dia (macros distribuídos) */}
       <div className="flex items-center gap-1.5 mb-2">
         <Apple size={15} color={C.pink} />
-        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Refeições do dia típico</span>
+        <span className="text-xs font-bold uppercase" style={{ color: C.muted, letterSpacing: "0.05em" }}>Refeições de {WEEKDAY_FULL[dia]}</span>
       </div>
       <div className="flex flex-col gap-2.5 mb-5">
         {plano.refeicoes.map((r) => <RefeicaoCard key={r.key} r={r} onPickMacro={(macro, grams) => setEquiv({ macro, grams, refeicaoTipo: tipoRefeicao(r), contexto: contextoRefeicao(r) })} />)}
       </div>
 
       {/* Etapa 5 — Suplementos (§7.9) e Alertas (§12.3) */}
-      <SuplementosCard perfil={perfil} metas={plano.metas} />
-      <AlertasCard perfil={perfil} plano={plano} />
+      <SuplementosCard perfil={perfilEfetivo} metas={plano.metas} />
+      <AlertasCard perfil={perfilEfetivo} plano={plano} />
 
       <div className="rounded-2xl p-3.5 mb-2 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
         <AlertTriangle size={15} color={AMBER} className="shrink-0 mt-0.5" />
@@ -2041,7 +2111,6 @@ function PlanoAlimentar({ perfil, onSave, weight, cards, completions }) {
       {editando && (
         <QuestionarioCFGA
           inicial={perfil}
-          cards={cards} completions={completions}
           onClose={() => setEditando(false)}
           onSave={(p) => { onSave(p); setEditando(false); }}
         />
@@ -2082,7 +2151,10 @@ function contextoRefeicao(r) {
   return "almoco"; // fallback conservador (café e almoço têm fontes de sobra)
 }
 
-/* Perfil vazio inicial (peso pré-preenchido se já houver na hidratação). */
+/* Perfil nutricional (peso pré-preenchido se já houver na hidratação).
+   Horários (acorda/dorme/escola/treinos) NÃO ficam mais aqui — vêm da
+   agenda da Organização. Só sobra o fallback manual de sono (acordaManual/
+   dormeManual), usado quando o dia não tem evento de SONO cadastrado. */
 function perfilPadrao(weight) {
   return {
     v: "cfga",
@@ -2091,31 +2163,56 @@ function perfilPadrao(weight) {
     percentualGordura: "", massaLivreGordura: "",
     objetivo: "performance", cenario: "rotina", jogo: "nenhum",
     ajusteControle: AJUSTE_FAIXA.inicio, // superávit/déficit (500–1000), ajustável
-    acorda: "07:00", dorme: "23:00", escolaInicio: "", escolaFim: "",
-    escolaIntervalos: [], // recreios pra lanchar (opcional): [{ inicio, duracaoMin }]
-    treinos: [{ tipo: "musculacao", inicio: "16:00", duracaoMin: "60" }],
+    acordaManual: "", dormeManual: "", // fallback só se faltar SONO na agenda
   };
 }
 
-/* Puxa os treinos de hoje da agenda (Organização) → formato do perfil.
-   Mapa conservador: forca→musculação; campo/jogo/tecnico→futebol.
-   REVISAR CFGA: "cardio" não mapeia para os METs do curso (só futebol/
-   musculação), então é ignorado no auto-preenchimento. */
-function treinosDoDiaApp(cards, completions) {
-  const hoje = toISO(new Date());
-  const occ = getOccurrencesForDate(cards, completions, hoje);
-  const mapa = { forca: "musculacao", campo: "futebol", jogo: "futebol", tecnico: "futebol" };
-  return occ
-    .filter((o) => mapa[o.type])
-    .map((o) => {
-      let dur = 60;
-      if (o.time && o.endTime) {
-        let d = hmToMin(o.endTime) - hmToMin(o.time);
-        if (d < 0) d += 1440;
-        if (d > 0) dur = d;
-      }
-      return { tipo: mapa[o.type], inicio: o.time || "16:00", duracaoMin: String(dur) };
-    });
+/* Deriva TODOS os dados de horário de um dia (iso) a partir da agenda da
+   Organização — fonte ÚNICA. A Nutrição não pede mais esses dados.
+   - SONO   → acorda (fim do sono) / dorme (início do sono).
+   - ESCOLA → início/fim + intervalos (recreios).
+   - FORÇA→musculação; CAMPO/JOGO/TÉCNICO→futebol (mesmo mapa do motor).
+   - CARDIO/CFGA/TÁTICA → bloco OCUPADO (bloqueia refeição). Cardio não
+     tem MET no curso (só futebol/musculação), então não vira "treino" com
+     gasto calórico — entra só como bloqueio de horário. DECISÃO NOSSA.
+   Devolve os campos + `faltando` (o que não estava cadastrado no dia). */
+function agendaDoDia(cards, completions, iso) {
+  const occ = getOccurrencesForDate(cards, completions, iso);
+  const mapaTreino = { forca: "musculacao", campo: "futebol", jogo: "futebol", tecnico: "futebol" };
+  const durMin = (o) => {
+    let dur = 60;
+    if (o.time && o.endTime) { let d = hmToMin(o.endTime) - hmToMin(o.time); if (d < 0) d += 1440; if (d > 0) dur = d; }
+    return dur;
+  };
+
+  const treinos = occ.filter((o) => mapaTreino[o.type])
+    .map((o) => ({ tipo: mapaTreino[o.type], inicio: o.time || "16:00", duracaoMin: String(durMin(o)) }));
+
+  const bloqueios = occ.filter((o) => ["cardio", "cfga", "tatica"].includes(o.type) && o.time)
+    .map((o) => ({ ini: hmToMin(o.time), fim: hmToMin(o.time) + durMin(o) }));
+
+  const esc = occ.find((o) => o.type === "escola" && o.time);
+  // Sono → acorda = FIM do sono (manhã); dorme = INÍCIO do sono (noite).
+  // Assume rotina de sono consistente no dia (conservador). Se o usuário
+  // dorme/acorda diferente por dia, cadastra o evento naquele dia.
+  const sono = occ.find((o) => o.type === "sono" && o.time);
+  const acorda = sono ? (sono.endTime || "") : "";
+  const dorme = sono ? sono.time : "";
+
+  return {
+    acorda, dorme,
+    escolaInicio: esc ? esc.time : "",
+    escolaFim: esc ? (esc.endTime || "") : "",
+    escolaIntervalos: esc ? (esc.intervalos || []) : [],
+    treinos, bloqueios,
+    faltando: { sono: !(acorda && dorme) },
+  };
+}
+
+/* Mapeia um dia da semana (0=Seg … 6=Dom) → data ISO na semana atual,
+   pra ler as ocorrências recorrentes/pontuais daquele dia. */
+function isoDoDiaDaSemana(dow) {
+  return toISO(addDays(startOfWeek(new Date()), dow));
 }
 
 function ResumoNutricional({ metas, perfil, onEdit }) {
@@ -2393,24 +2490,14 @@ function EquivalenciaModal({ macro, grams, ctx, onClose }) {
   );
 }
 
-/* Questionário CFGA — salvo no localStorage, reeditável. */
-function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
+/* Questionário CFGA — só o que é EXCLUSIVO da nutrição (peso, idade,
+   composição, objetivo, cenário, jogo). Horários (acorda/dorme/escola/
+   treinos) vêm da agenda da Organização — não se pede mais aqui. */
+function QuestionarioCFGA({ inicial, onClose, onSave }) {
   const C = useC();
-  const [d, setD] = useState(() => ({ ...perfilPadrao(null), ...inicial, treinos: (inicial.treinos && inicial.treinos.length ? inicial.treinos.map((t) => ({ ...t })) : perfilPadrao(null).treinos), escolaIntervalos: (inicial.escolaIntervalos || []).map((iv) => ({ ...iv })) }));
+  const [d, setD] = useState(() => ({ ...perfilPadrao(null), ...inicial }));
   const inputStyle = { background: C.surface2, border: `1px solid ${C.line}`, color: C.text };
   const set = (patch) => setD((p) => ({ ...p, ...patch }));
-  const setTreino = (i, patch) => setD((p) => ({ ...p, treinos: p.treinos.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
-  const addTreino = () => setD((p) => ({ ...p, treinos: [...p.treinos, { tipo: "futebol", inicio: "16:00", duracaoMin: "90" }] }));
-  const removeTreino = (i) => setD((p) => ({ ...p, treinos: p.treinos.filter((_, j) => j !== i) }));
-  // Intervalos de escola (recreios) — mesmo padrão de "adicionar mais um" dos treinos.
-  const temIntervalo = (d.escolaIntervalos || []).length > 0;
-  const setIntervalo = (i, patch) => setD((p) => ({ ...p, escolaIntervalos: p.escolaIntervalos.map((iv, j) => (j === i ? { ...iv, ...patch } : iv)) }));
-  const addIntervalo = () => setD((p) => ({ ...p, escolaIntervalos: [...(p.escolaIntervalos || []), { inicio: "10:00", duracaoMin: "20" }] }));
-  const removeIntervalo = (i) => setD((p) => ({ ...p, escolaIntervalos: p.escolaIntervalos.filter((_, j) => j !== i) }));
-  const puxarDoApp = () => {
-    const ts = treinosDoDiaApp(cards, completions);
-    if (ts.length) setD((p) => ({ ...p, treinos: ts }));
-  };
   const podeSalvar = Number(d.pesoKg) > 0;
 
   return (
@@ -2477,82 +2564,13 @@ function QuestionarioCFGA({ inicial, cards, completions, onClose, onSave }) {
         </div>
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Acorda"><input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.acorda} onChange={(e) => set({ acorda: e.target.value })} /></Field>
-        <Field label="Dorme"><input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.dorme} onChange={(e) => set({ dorme: e.target.value })} /></Field>
+      {/* Horários não são mais pedidos aqui — vêm da agenda da Organização. */}
+      <div className="rounded-2xl p-3.5 mt-1 mb-1 flex items-start gap-2" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
+        <CalendarDays size={15} color={C.pink} className="shrink-0 mt-0.5" />
+        <p className="text-[11px] leading-snug" style={{ color: C.muted }}>
+          Sono, escola e treinos vêm da aba <b style={{ color: C.text }}>Organização</b> — cadastre lá e o plano se ajusta sozinho, dia a dia. Aqui é só o seu perfil nutricional.
+        </p>
       </div>
-      <Field label="Escola (opcional)">
-        <div className="grid grid-cols-2 gap-3">
-          <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.escolaInicio} onChange={(e) => set({ escolaInicio: e.target.value })} />
-          <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle} value={d.escolaFim} onChange={(e) => set({ escolaFim: e.target.value })} />
-        </div>
-
-        {/* Intervalos/recreios pra lanchar (opcional). Só mostra se a escola foi informada. */}
-        {(d.escolaInicio || d.escolaFim || temIntervalo) && (
-          <div className="mt-3 rounded-2xl p-3" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold" style={{ color: C.text }}>Tem intervalo pra lanchar na escola?</span>
-              {!temIntervalo && (
-                <button onClick={addIntervalo} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ background: C.surface, color: C.pink, border: `1px solid ${C.line}` }}>Sim</button>
-              )}
-            </div>
-            {temIntervalo && (
-              <div className="flex flex-col gap-2 mt-2.5">
-                {d.escolaIntervalos.map((iv, i) => (
-                  <div key={i} className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Início</label>
-                      <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={iv.inicio} onChange={(e) => setIntervalo(i, { inicio: e.target.value })} />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Duração (min)</label>
-                      <input type="number" min="0" step="5" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={iv.duracaoMin} onChange={(e) => setIntervalo(i, { duracaoMin: e.target.value })} />
-                    </div>
-                    <button onClick={() => removeIntervalo(i)} aria-label="Remover intervalo" className="pb-2.5"><Trash2 size={14} color={C.muted} /></button>
-                  </div>
-                ))}
-                <button onClick={addIntervalo} className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[12px] font-bold" style={{ background: C.surface, color: C.pink, border: `1px dashed ${C.line}` }}>
-                  <Plus size={13} /> Adicionar intervalo
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </Field>
-
-      <Field label="Treinos do dia">
-        <button onClick={puxarDoApp} className="w-full mb-2 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1" style={{ background: C.surface2, color: C.pink, border: `1px dashed ${C.line}` }}>
-          <CalendarDays size={13} /> Puxar treinos de hoje da agenda
-        </button>
-        <div className="flex flex-col gap-3">
-          {d.treinos.map((t, i) => (
-            <div key={i} className="rounded-2xl p-3" style={{ background: C.surface2, border: `1px solid ${C.line}` }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold uppercase" style={{ color: C.muted }}>Treino {i + 1}</span>
-                {d.treinos.length > 1 && <button onClick={() => removeTreino(i)} aria-label="Remover"><Trash2 size={14} color={C.muted} /></button>}
-              </div>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {TIPOS_TREINO.map((tp) => (
-                  <Pill key={tp.key} small active={t.tipo === tp.key} onClick={() => setTreino(i, { tipo: tp.key })}>{tp.label}</Pill>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Início</label>
-                  <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={t.inicio} onChange={(e) => setTreino(i, { inicio: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Duração (min)</label>
-                  <input type="number" min="0" step="5" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle} value={t.duracaoMin} onChange={(e) => setTreino(i, { duracaoMin: e.target.value })} />
-                </div>
-              </div>
-            </div>
-          ))}
-          <button onClick={addTreino} className="flex items-center justify-center gap-1 py-2 rounded-xl text-sm font-bold" style={{ background: C.surface2, color: C.pink, border: `1px dashed ${C.line}` }}>
-            <Plus size={15} /> Adicionar treino
-          </button>
-        </div>
-      </Field>
 
       <button onClick={() => podeSalvar && onSave({ ...d, v: "cfga" })} disabled={!podeSalvar} className="w-full py-3 rounded-2xl font-bold text-white mt-1" style={{ background: podeSalvar ? C.pink : C.line }}>
         CALCULAR METAS
@@ -3592,6 +3610,34 @@ function CardFormModal({ card, onClose, onSave }) {
         <input type="time" className="w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={inputStyle}
           value={draft.endTime || ""} onChange={(e) => setDraft({ ...draft, endTime: e.target.value })} />
       </Field>
+
+      {/* Intervalos/recreios — só p/ ESCOLA. A Nutrição usa isso pra posicionar
+          o lanche da escola dentro do recreio (fonte única: a agenda). */}
+      {draft.type === "escola" && (
+        <Field label="Intervalos pra lanchar (opcional)">
+          <div className="flex flex-col gap-2">
+            {(draft.intervalos || []).map((iv, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Início</label>
+                  <input type="time" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle}
+                    value={iv.inicio} onChange={(e) => setDraft({ ...draft, intervalos: draft.intervalos.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)) })} />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: C.muted }}>Duração (min)</label>
+                  <input type="number" min="0" step="5" className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={inputStyle}
+                    value={iv.duracaoMin} onChange={(e) => setDraft({ ...draft, intervalos: draft.intervalos.map((x, j) => (j === i ? { ...x, duracaoMin: e.target.value } : x)) })} />
+                </div>
+                <button onClick={() => setDraft({ ...draft, intervalos: draft.intervalos.filter((_, j) => j !== i) })} aria-label="Remover intervalo" className="pb-2.5"><Trash2 size={14} color={C.muted} /></button>
+              </div>
+            ))}
+            <button onClick={() => setDraft({ ...draft, intervalos: [...(draft.intervalos || []), { inicio: "10:00", duracaoMin: "20" }] })}
+              className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[12px] font-bold" style={{ background: C.surface2, color: C.pink, border: `1px dashed ${C.line}` }}>
+              <Plus size={13} /> Adicionar intervalo
+            </button>
+          </div>
+        </Field>
+      )}
 
       <Field label="Repetição">
         <div className="flex flex-wrap gap-2 mb-2">
